@@ -1,7 +1,7 @@
-@import "tailwindcss";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 
 /* ✅ Your existing setup */
 :root {
@@ -29,10 +29,7 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* ✅ ADD THIS BELOW YOUR STYLES */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+
 
 @layer utilities {
   .animate-pulse-slow {

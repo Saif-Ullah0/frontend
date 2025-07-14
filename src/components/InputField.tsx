@@ -1,25 +1,34 @@
-// src/components/InputField.tsx
-import { InputHTMLAttributes } from 'react';
-
-type Props = {
+type InputFieldProps = {
   label: string;
   name: string;
-  error?: string;
-} & InputHTMLAttributes<HTMLInputElement>;
+  type?: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  placeholder?: string;
+};
 
-export default function InputField({ label, name, error, ...rest }: Props) {
+export default function InputField({
+  label,
+  name,
+  type = 'text',
+  value,
+  onChange,
+  placeholder,
+}: InputFieldProps) {
   return (
-    <div className="mb-4">
-      <label className="block text-sm font-semibold mb-1" htmlFor={name}>
+    <div className="flex flex-col gap-2">
+      <label htmlFor={name} className="text-white font-medium">
         {label}
       </label>
       <input
-        id={name}
+        type={type}
         name={name}
-        {...rest}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:ring-indigo-500"
+        id={name}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className="w-full px-4 py-2 rounded-lg bg-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
-      {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
     </div>
   );
 }

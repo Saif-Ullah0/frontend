@@ -34,17 +34,24 @@
 // }
 
 
-import './globals.css'
-import { Toaster } from 'react-hot-toast'
-import { ReactNode } from 'react'
+// app/layout.tsx
+import './globals.css';
+import { ReactNode } from 'react';
+import { AuthProvider } from '@/contexts/AuthContext';
+import Navbar from '@/components/Navbar';
+import { Toaster } from 'react-hot-toast';
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>
-        {children}
-        <Toaster />
+      <body className="bg-[#0b0e1a] text-white">
+        <AuthProvider>
+          <Navbar />
+          {children}
+          <Toaster position="top-right" />
+        </AuthProvider>
       </body>
     </html>
-  )
+  );
 }
+
