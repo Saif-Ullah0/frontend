@@ -34,6 +34,8 @@ export default function Navbar() {
         <li><Link href="/my-courses" className="hover:text-blue-400">My Courses</Link></li>
         <li><Link href="/dashboard" className="hover:text-blue-400">Dashboard</Link></li>
         <li><Link href="/profile" className="hover:text-blue-400">Profile</Link></li>
+        <li><Link href="/search" className="hover:text-blue-300">Search</Link></li>
+
         <li>
           <button
             onClick={handleLogout}

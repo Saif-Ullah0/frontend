@@ -28,16 +28,25 @@ export default function CourseDetail({ course }: { course: Course }) {
         const res = await fetch('http://localhost:5000/api/enroll', {
           credentials: 'include',
         });
+
         const data = await res.json();
-        type Enrollment = { courseId: number };
-        const enrolled = data.some((enr: Enrollment) => enr.courseId === course.id);
-        setIsEnrolled(enrolled);
+
+        if (Array.isArray(data)) {
+          type Enrollment = { courseId: number };
+          const enrolled = data.some((enr: Enrollment) => enr.courseId === course.id);
+          setIsEnrolled(enrolled);
+        } else {
+          console.warn('Unexpected enrollment response:', data);
+          setIsEnrolled(false); // fallback
+        }
       } catch (err) {
         console.error('Enrollment check failed:', err);
+        setIsEnrolled(false);
       } finally {
         setCheckingEnrollment(false);
       }
     };
+
     checkEnrollment();
   }, [course.id]);
 
@@ -94,6 +103,7 @@ export default function CourseDetail({ course }: { course: Course }) {
 
   return (
     <main className="relative min-h-screen bg-[#0b0e1a] text-white px-6 py-20 overflow-hidden">
+      {/* Background Effects */}
       <div className="absolute top-[-80px] left-[-100px] w-[400px] h-[400px] bg-pink-500/20 rounded-full blur-[160px] animate-pulse-slow z-0" />
       <div className="absolute bottom-[-100px] right-[-80px] w-[400px] h-[400px] bg-blue-500/20 rounded-full blur-[140px] animate-pulse-slower z-0" />
 
