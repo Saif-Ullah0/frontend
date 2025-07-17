@@ -139,7 +139,7 @@ export default function AdminDashboard() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Admin Dashboard</h1>
-          <p className="text-gray-400">Welcome back! Here's your platform overview.</p>
+          <p className="text-gray-400">Welcome back! Here is your platform overview.</p>
         </div>
 
         {/* Stats Cards */}

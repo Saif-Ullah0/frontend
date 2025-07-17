@@ -11,6 +11,7 @@ import {
   AcademicCapIcon, 
   BookOpenIcon,
   ArrowRightOnRectangleIcon,
+    VideoCameraIcon, 
   Bars3Icon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
@@ -32,6 +33,8 @@ const navigation = [
   { name: 'Categories', href: '/admin/categories', icon: FolderIcon },
   { name: 'Courses', href: '/admin/courses', icon: AcademicCapIcon },
   { name: 'Modules', href: '/admin/modules', icon: BookOpenIcon },
+    { name: 'Videos', href: '/admin/video-test', icon: VideoCameraIcon }, // Add this line
+
 ];
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
