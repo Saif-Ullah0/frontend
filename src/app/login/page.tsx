@@ -5,6 +5,15 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Shield, CheckCircle2 } from 'lucide-react';
 
+type Particle = {
+  id: number;
+  left: string;
+  top: string;
+  animationDelay: string;
+  animationDuration: string;
+  size: 'w-1 h-1' | 'w-2 h-2';
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const [form, setForm] = useState({ email: '', password: '' });
@@ -12,6 +21,20 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isFormValid, setIsFormValid] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [particles, setParticles] = useState<Particle[]>([]);
+
+  // ✅ Generate particles on client side only to avoid hydration mismatch
+  useEffect(() => {
+    const generatedParticles: Particle[] = Array.from({ length: 8 }, (_, i) => ({
+      id: i,
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 100}%`,
+      animationDelay: `${Math.random() * 4}s`,
+      animationDuration: `${4 + Math.random() * 3}s`,
+      size: i % 2 === 0 ? 'w-2 h-2' : 'w-1 h-1'
+    }));
+    setParticles(generatedParticles);
+  }, []);
 
   useEffect(() => {
     const isValid = form.email.includes('@') && form.password.length >= 6;
@@ -69,15 +92,15 @@ export default function LoginPage() {
       
       {/* Floating geometric shapes */}
       <div className="absolute inset-0 overflow-hidden z-0">
-        {[...Array(8)].map((_, i) => (
+        {particles.map((particle) => (
           <div
-            key={i}
-            className={`absolute rounded-full bg-white/10 animate-float ${i % 2 === 0 ? 'w-2 h-2' : 'w-1 h-1'}`}
+            key={particle.id}
+            className={`absolute rounded-full bg-white/10 animate-float ${particle.size}`}
             style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 4}s`,
-              animationDuration: `${4 + Math.random() * 3}s`
+              left: particle.left,
+              top: particle.top,
+              animationDelay: particle.animationDelay,
+              animationDuration: particle.animationDuration
             }}
           />
         ))}
@@ -113,6 +136,7 @@ export default function LoginPage() {
                   value={form.email}
                   onChange={handleChange}
                   placeholder="Enter your email"
+                  autoComplete="email"
                   className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all duration-300 group-hover:border-white/20"
                   required
                 />
@@ -135,6 +159,7 @@ export default function LoginPage() {
                   value={form.password}
                   onChange={handleChange}
                   placeholder="Enter your password"
+                  autoComplete="current-password"
                   className="w-full px-4 py-3 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all duration-300 group-hover:border-white/20"
                   required
                 />
@@ -232,7 +257,7 @@ export default function LoginPage() {
 
           <div className="text-center mt-8">
             <p className="text-gray-400">
-              Don't have an account?{' '}
+              Dont have an account?{' '}
               <a href="/register" className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400 hover:from-cyan-300 hover:to-blue-300 font-semibold transition-all duration-300 hover:underline">
                 Create one here
               </a>

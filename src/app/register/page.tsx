@@ -2,10 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import InputField from '@/components/InputField';
-import SubmitButton from '@/components/SubmitButton';
 import { toast } from 'sonner';
 import { Eye, EyeOff, CheckCircle2, XCircle, Mail, User, Lock, Sparkles } from 'lucide-react';
+
+type Particle = {
+  id: number;
+  left: string;
+  top: string;
+  animationDelay: string;
+  animationDuration: string;
+};
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -22,6 +28,19 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState(0);
   const [isFormValid, setIsFormValid] = useState(false);
+  const [particles, setParticles] = useState<Particle[]>([]);
+
+  // ✅ Generate particles on client side only to avoid hydration mismatch
+  useEffect(() => {
+    const generatedParticles: Particle[] = Array.from({ length: 12 }, (_, i) => ({
+      id: i,
+      left: `${Math.random() * 100}%`,
+      top: `${Math.random() * 100}%`,
+      animationDelay: `${Math.random() * 3}s`,
+      animationDuration: `${3 + Math.random() * 2}s`
+    }));
+    setParticles(generatedParticles);
+  }, []);
 
   // Password strength checker
   const calculatePasswordStrength = (password: string) => {
@@ -100,7 +119,7 @@ export default function RegisterPage() {
           toast.success('Registration successful! Please login to continue.');
           router.push('/login');
         }
-      } catch (loginError) {
+      } catch {
         // If auto-login fails, redirect to login page
         toast.success('Registration successful! Please login to continue.');
         router.push('/login');
@@ -136,15 +155,15 @@ export default function RegisterPage() {
       
       {/* Floating particles */}
       <div className="absolute inset-0 overflow-hidden z-0">
-        {[...Array(12)].map((_, i) => (
+        {particles.map((particle) => (
           <div
-            key={i}
+            key={particle.id}
             className="absolute w-1 h-1 bg-white/20 rounded-full animate-float"
             style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-              animationDuration: `${3 + Math.random() * 2}s`
+              left: particle.left,
+              top: particle.top,
+              animationDelay: particle.animationDelay,
+              animationDuration: particle.animationDuration
             }}
           />
         ))}
@@ -179,6 +198,7 @@ export default function RegisterPage() {
                   value={form.name}
                   onChange={handleChange}
                   placeholder="Enter your full name"
+                  autoComplete="name"
                   className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-300"
                   required
                 />
@@ -201,6 +221,7 @@ export default function RegisterPage() {
                   value={form.email}
                   onChange={handleChange}
                   placeholder="you@example.com"
+                  autoComplete="email"
                   className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-300"
                   required
                 />
@@ -223,6 +244,7 @@ export default function RegisterPage() {
                   value={form.password}
                   onChange={handleChange}
                   placeholder="Create a strong password"
+                  autoComplete="new-password"
                   className="w-full px-4 py-3 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-300"
                   required
                 />
@@ -267,6 +289,7 @@ export default function RegisterPage() {
                   value={form.confirmPassword}
                   onChange={handleChange}
                   placeholder="Confirm your password"
+                  autoComplete="new-password"
                   className="w-full px-4 py-3 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all duration-300"
                   required
                 />
