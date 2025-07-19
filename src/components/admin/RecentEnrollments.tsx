@@ -36,6 +36,7 @@ export default function RecentEnrollments({ enrollments }: RecentEnrollmentsProp
       if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} days ago`;
       
       return date.toLocaleDateString();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       return 'Unknown time';
     }
@@ -100,13 +101,7 @@ export default function RecentEnrollments({ enrollments }: RecentEnrollmentsProp
         </div>
       )}
 
-      {enrollments.length > 0 && (
-        <div className="mt-6 text-center">
-          <button className="px-4 py-2 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors">
-            View All Enrollments
-          </button>
-        </div>
-      )}
+     
     </div>
   );
 }

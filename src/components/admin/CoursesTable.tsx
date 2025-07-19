@@ -60,6 +60,7 @@ export default function CoursesTable({
       if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} days ago`;
       
       return date.toLocaleDateString();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       return 'Unknown';
     }

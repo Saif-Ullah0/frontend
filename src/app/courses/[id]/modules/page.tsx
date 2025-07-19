@@ -9,20 +9,15 @@ import {
   Clock, 
   BookOpen, 
   ArrowLeft, 
-  Trophy, 
-  Star,
+  Trophy,
   BarChart3,
-  Users,
-  Download,
-  Share2,
-  Heart,
   ChevronRight,
   PlayCircle,
-  RotateCcw,
   Video,
   FileText,
   X
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 type Module = {
   id: number;
@@ -48,11 +43,16 @@ type Course = {
   category?: {
     name: string;
   };
-  instructor?: string;
-  rating?: number;
-  studentsCount?: number;
-  progress?: number;
   modules?: Module[];
+};
+
+type ProgressData = {
+  enrollmentId: number;
+  courseId: number;
+  overallProgress: number;
+  lastAccessed: string;
+  moduleProgress: any[];
+  completedModules: number[];
 };
 
 export default function CourseModulesPage() {
@@ -65,11 +65,15 @@ export default function CourseModulesPage() {
   const [notEnrolled, setNotEnrolled] = useState(false);
   const [currentModule, setCurrentModule] = useState<Module | null>(null);
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
-  const [completedModules, setCompletedModules] = useState<number[]>([]);
+  const [progressData, setProgressData] = useState<ProgressData | null>(null);
+  const [savingProgress, setSavingProgress] = useState(false);
 
+  // Load course and progress data
   useEffect(() => {
     const fetchData = async () => {
       try {
+        console.log('🔄 Fetching course and progress data...');
+        
         // Fetch course with modules
         const courseRes = await fetch(`http://localhost:5000/api/courses/${id}`, {
           credentials: 'include'
@@ -77,39 +81,51 @@ export default function CourseModulesPage() {
 
         if (courseRes.ok) {
           const courseData = await courseRes.json();
+          console.log('✅ Course data loaded:', courseData.title);
           
-          // Process modules with enhanced data
+          // Process modules
           const processedModules = (courseData.modules || [])
             .sort((a: Module, b: Module) => a.orderIndex - b.orderIndex)
             .map((module: Module, index: number) => ({
               ...module,
-              description: module.content || `Learn about ${module.title.toLowerCase()} with practical examples.`,
-              duration: module.type === 'VIDEO' ? Math.round((module.videoDuration || 0) / 60) : Math.floor(Math.random() * 30) + 10,
-              isCompleted: false, // Start with no modules completed
-              isLocked: false,    // All modules unlocked for enrolled users
-              order: index + 1
+              order: index + 1,
+              isCompleted: false, // Will be updated from progress data
+              isLocked: false
             }));
 
           setModules(processedModules);
+          setCourse(courseData);
 
-          // Set course data with enhancements
-          setCourse({
-            ...courseData,
-            instructor: "Dr. Sarah Johnson",
-            rating: 4.8,
-            studentsCount: 1234,
-            progress: 0 // Start with 0% progress
+          // Fetch progress data
+          console.log('🔄 Fetching progress data...');
+          const progressRes = await fetch(`http://localhost:5000/api/progress/course/${id}`, {
+            credentials: 'include'
           });
 
-          // For now, skip enrollment checking - assume user is enrolled
-          console.log('Course and modules loaded successfully');
+          if (progressRes.ok) {
+            const progress = await progressRes.json();
+            console.log('✅ Progress data loaded:', progress);
+            setProgressData(progress);
+            
+            // Update modules with completion status
+            const updatedModules = processedModules.map((module: Module) => ({
+              ...module,
+              isCompleted: progress.completedModules.includes(module.id)
+            }));
+            
+            setModules(updatedModules);
+            console.log(`📊 Completed modules: ${progress.completedModules.length}`);
+          } else {
+            console.warn('⚠️ Could not fetch progress data');
+            // Still proceed without progress data
+          }
           
         } else {
-          console.error('Failed to fetch course:', courseRes.status);
+          console.error('❌ Failed to fetch course:', courseRes.status);
           setNotEnrolled(true);
         }
       } catch (err) {
-        console.error('Failed to fetch course data:', err);
+        console.error('❌ Failed to fetch course data:', err);
         setNotEnrolled(true);
       } finally {
         setLoading(false);
@@ -119,6 +135,60 @@ export default function CourseModulesPage() {
     fetchData();
   }, [id]);
 
+  const updateModuleProgress = async (moduleId: number, isCompleted: boolean, watchTime?: number, completionPercentage?: number) => {
+    setSavingProgress(true);
+    console.log(`💾 Saving progress for module ${moduleId}...`);
+    
+    try {
+      const response = await fetch('http://localhost:5000/api/progress/module', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          courseId: parseInt(id as string),
+          moduleId,
+          isCompleted,
+          watchTime: watchTime || 0,
+          completionPercentage: completionPercentage || (isCompleted ? 100 : 0)
+        }),
+        credentials: 'include',
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('✅ Progress saved successfully:', result);
+        
+        // Update local state
+        setModules(prev => prev.map(m => 
+          m.id === moduleId ? { ...m, isCompleted } : m
+        ));
+
+        // Update progress data
+        if (progressData) {
+          setProgressData(prev => prev ? {
+            ...prev,
+            overallProgress: result.overallProgress,
+            completedModules: isCompleted 
+              ? [...prev.completedModules.filter(id => id !== moduleId), moduleId]
+              : prev.completedModules.filter(id => id !== moduleId)
+          } : null);
+        }
+
+        if (isCompleted) {
+          toast.success('Module completed! Progress saved 🎉');
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('❌ Failed to save progress:', response.status, errorText);
+        throw new Error('Failed to update progress');
+      }
+    } catch (error) {
+      console.error('❌ Error updating progress:', error);
+      toast.error('Failed to save progress. Please try again.');
+    } finally {
+      setSavingProgress(false);
+    }
+  };
+
   const handleModuleClick = (module: Module) => {
     if (module.isLocked) return;
     
@@ -127,30 +197,23 @@ export default function CourseModulesPage() {
     if (module.type === 'VIDEO') {
       setShowVideoPlayer(true);
     } else {
-      // For text modules, you could navigate to a detailed view
-      // For now, just show the module content
       setShowVideoPlayer(false);
     }
   };
 
   const handleVideoProgress = (videoId: number, currentTime: number, duration: number, progress: number) => {
-    // Mark as completed when 90% watched
-    if (progress > 90 && !completedModules.includes(videoId)) {
-      setCompletedModules(prev => [...prev, videoId]);
-      
-      // Update the module's completion status
-      setModules(prev => prev.map(m => 
-        m.id === videoId ? { ...m, isCompleted: true } : m
-      ));
+    // Auto-mark as completed when 90% watched
+    if (progress > 90 && !modules.find(m => m.id === videoId)?.isCompleted) {
+      console.log(`🎥 Video ${videoId} reached 90%, auto-completing...`);
+      updateModuleProgress(videoId, true, currentTime, progress);
     }
   };
 
   const handleModuleComplete = (moduleId: number) => {
-    if (!completedModules.includes(moduleId)) {
-      setCompletedModules(prev => [...prev, moduleId]);
-      setModules(prev => prev.map(m => 
-        m.id === moduleId ? { ...m, isCompleted: true } : m
-      ));
+    const module = modules.find(m => m.id === moduleId);
+    if (module && !module.isCompleted) {
+      console.log(`✅ Manually completing module ${moduleId}...`);
+      updateModuleProgress(moduleId, true);
     }
   };
 
@@ -161,18 +224,9 @@ export default function CourseModulesPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const formatFileSize = (bytes: string): string => {
-    const num = parseInt(bytes);
-    if (!num) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(num) / Math.log(k));
-    return parseFloat((num / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
   const completedCount = modules.filter(m => m.isCompleted).length;
   const totalModules = modules.length;
-  const progressPercentage = totalModules > 0 ? (completedCount / totalModules) * 100 : 0;
+  const progressPercentage = progressData?.overallProgress || 0;
 
   if (loading) {
     return (
@@ -242,6 +296,9 @@ export default function CourseModulesPage() {
                     <div className="text-sm font-semibold text-white">{Math.round(progressPercentage)}% Complete</div>
                     <div className="text-xs text-gray-400">{completedCount} of {totalModules} modules</div>
                   </div>
+                  {savingProgress && (
+                    <div className="w-5 h-5 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin"></div>
+                  )}
                 </div>
               </div>
             </div>
@@ -257,50 +314,6 @@ export default function CourseModulesPage() {
                     <div className="flex-1">
                       <h2 className="text-2xl font-bold text-white mb-2">{course?.title}</h2>
                       <p className="text-gray-400">{course?.description}</p>
-                    </div>
-                    <div className="flex items-center gap-2 ml-4">
-                      <button className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all duration-300">
-                        <Heart className="w-5 h-5" />
-                      </button>
-                      <button className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-all duration-300">
-                        <Share2 className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    <div className="text-center p-3 bg-white/5 rounded-xl">
-                      <div className="flex items-center justify-center w-8 h-8 bg-blue-500/20 rounded-lg mx-auto mb-2">
-                        <Users className="w-4 h-4 text-blue-400" />
-                      </div>
-                      <div className="text-lg font-semibold text-white">{course?.studentsCount?.toLocaleString()}</div>
-                      <div className="text-xs text-gray-400">Students</div>
-                    </div>
-
-                    <div className="text-center p-3 bg-white/5 rounded-xl">
-                      <div className="flex items-center justify-center w-8 h-8 bg-yellow-500/20 rounded-lg mx-auto mb-2">
-                        <Star className="w-4 h-4 text-yellow-400" />
-                      </div>
-                      <div className="text-lg font-semibold text-white">{course?.rating}</div>
-                      <div className="text-xs text-gray-400">Rating</div>
-                    </div>
-
-                    <div className="text-center p-3 bg-white/5 rounded-xl">
-                      <div className="flex items-center justify-center w-8 h-8 bg-green-500/20 rounded-lg mx-auto mb-2">
-                        <BookOpen className="w-4 h-4 text-green-400" />
-                      </div>
-                      <div className="text-lg font-semibold text-white">{totalModules}</div>
-                      <div className="text-xs text-gray-400">Modules</div>
-                    </div>
-
-                    <div className="text-center p-3 bg-white/5 rounded-xl">
-                      <div className="flex items-center justify-center w-8 h-8 bg-purple-500/20 rounded-lg mx-auto mb-2">
-                        <Clock className="w-4 h-4 text-purple-400" />
-                      </div>
-                      <div className="text-lg font-semibold text-white">
-                        {Math.round(modules.reduce((acc, m) => acc + (m.videoDuration || m.duration || 0), 0) / 60)}h
-                      </div>
-                      <div className="text-xs text-gray-400">Total Time</div>
                     </div>
                   </div>
 
@@ -391,16 +404,10 @@ export default function CourseModulesPage() {
                                       {formatDuration(module.videoDuration)}
                                     </span>
                                   )}
-                                  {module.type === 'TEXT' && module.duration && (
-                                    <span className="flex items-center gap-1">
-                                      <Clock className="w-4 h-4" />
-                                      {module.duration}m
-                                    </span>
-                                  )}
                                 </div>
                               </div>
-                              {module.description && (
-                                <p className="text-gray-400 text-sm line-clamp-2">{module.description}</p>
+                              {module.content && (
+                                <p className="text-gray-400 text-sm line-clamp-2">{module.content}</p>
                               )}
                             </div>
 
@@ -419,23 +426,6 @@ export default function CourseModulesPage() {
 
               {/* Sidebar */}
               <div className="space-y-6">
-                {/* Instructor Info */}
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                  <h3 className="text-lg font-semibold text-white mb-4">Instructor</h3>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-                      <span className="text-white font-semibold">SJ</span>
-                    </div>
-                    <div>
-                      <h4 className="font-semibold text-white">{course?.instructor}</h4>
-                      <p className="text-gray-400 text-sm">Senior Developer</p>
-                    </div>
-                  </div>
-                  <p className="text-gray-400 text-sm">
-                    Experienced software engineer with 10+ years in the industry, specializing in modern web development.
-                  </p>
-                </div>
-
                 {/* Course Stats */}
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
                   <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
@@ -450,16 +440,18 @@ export default function CourseModulesPage() {
                     </div>
                     
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-300">Time Spent</span>
-                      <span className="font-semibold text-white">
-                        {Math.round(completedCount * (modules.reduce((acc, m) => acc + (m.videoDuration || m.duration || 0), 0) / totalModules) / 60 * 10) / 10}h
-                      </span>
+                      <span className="text-gray-300">Overall Progress</span>
+                      <span className="font-semibold text-white">{Math.round(progressPercentage)}%</span>
                     </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-300">Average Score</span>
-                      <span className="font-semibold text-white">87%</span>
-                    </div>
+
+                    {progressData?.lastAccessed && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-300">Last Accessed</span>
+                        <span className="font-semibold text-white">
+                          {new Date(progressData.lastAccessed).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {progressPercentage >= 100 && (
@@ -471,24 +463,23 @@ export default function CourseModulesPage() {
                   )}
                 </div>
 
-                {/* Course Actions */}
+                {/* Quick Navigation */}
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                  <h3 className="text-lg font-semibold text-white mb-4">Course Actions</h3>
+                  <h3 className="text-lg font-semibold text-white mb-4">Quick Navigation</h3>
                   
                   <div className="space-y-3">
-                    <button className="w-full p-3 bg-blue-500/20 border border-blue-500/30 rounded-xl hover:bg-blue-500/30 transition-all duration-300 flex items-center gap-3">
-                      <Download className="w-4 h-4 text-blue-400" />
-                      <span className="text-blue-300">Download Resources</span>
+                    <button 
+                      onClick={() => router.push('/my-courses')}
+                      className="w-full p-3 bg-blue-500/20 border border-blue-500/30 rounded-xl hover:bg-blue-500/30 transition-all duration-300 text-left"
+                    >
+                      <span className="text-blue-300">← Back to My Courses</span>
                     </button>
                     
-                    <button className="w-full p-3 bg-purple-500/20 border border-purple-500/30 rounded-xl hover:bg-purple-500/30 transition-all duration-300 flex items-center gap-3">
-                      <RotateCcw className="w-4 h-4 text-purple-400" />
-                      <span className="text-purple-300">Reset Progress</span>
-                    </button>
-                    
-                    <button className="w-full p-3 bg-green-500/20 border border-green-500/30 rounded-xl hover:bg-green-500/30 transition-all duration-300 flex items-center gap-3">
-                      <Star className="w-4 h-4 text-green-400" />
-                      <span className="text-green-300">Rate Course</span>
+                    <button 
+                      onClick={() => router.push('/dashboard')}
+                      className="w-full p-3 bg-purple-500/20 border border-purple-500/30 rounded-xl hover:bg-purple-500/30 transition-all duration-300 text-left"
+                    >
+                      <span className="text-purple-300">← Back to Dashboard</span>
                     </button>
                   </div>
                 </div>
@@ -498,17 +489,12 @@ export default function CourseModulesPage() {
         </div>
 
         <style jsx>{`
-          @keyframes pulse-slow {
-            0%, 100% { opacity: 0.3; transform: scale(1); }
-            50% { opacity: 0.6; transform: scale(1.05); }
+          .line-clamp-2 { 
+            display: -webkit-box; 
+            -webkit-line-clamp: 2; 
+            -webkit-box-orient: vertical; 
+            overflow: hidden; 
           }
-          @keyframes pulse-slower {
-            0%, 100% { opacity: 0.2; transform: scale(1); }
-            50% { opacity: 0.4; transform: scale(1.1); }
-          }
-          .animate-pulse-slow { animation: pulse-slow 4s ease-in-out infinite; }
-          .animate-pulse-slower { animation: pulse-slower 6s ease-in-out infinite; }
-          .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         `}</style>
       </main>
 
@@ -520,14 +506,11 @@ export default function CourseModulesPage() {
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-white">{currentModule.title}</h2>
-                <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
-                  {currentModule.videoDuration && (
+                {currentModule.videoDuration && (
+                  <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
                     <span>Duration: {formatDuration(currentModule.videoDuration)}</span>
-                  )}
-                  {currentModule.videoSize && (
-                    <span>Size: {formatFileSize(currentModule.videoSize)}</span>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
               <button
                 onClick={() => setShowVideoPlayer(false)}
@@ -561,14 +544,21 @@ export default function CourseModulesPage() {
             <div className="mt-6 flex items-center justify-between">
               <button
                 onClick={() => handleModuleComplete(currentModule.id)}
-                disabled={completedModules.includes(currentModule.id)}
+                disabled={currentModule.isCompleted || savingProgress}
                 className={`px-6 py-3 rounded-lg transition-colors flex items-center gap-2 ${
-                  completedModules.includes(currentModule.id)
+                  currentModule.isCompleted
                     ? 'bg-green-600 text-white cursor-default'
+                    : savingProgress
+                    ? 'bg-gray-600 text-white cursor-not-allowed'
                     : 'bg-blue-600 hover:bg-blue-700 text-white'
                 }`}
               >
-                {completedModules.includes(currentModule.id) ? (
+                {savingProgress ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Saving...
+                  </>
+                ) : currentModule.isCompleted ? (
                   <>
                     <CheckCircle2 className="w-4 h-4" />
                     Completed

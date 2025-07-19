@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { XMarkIcon, UserCircleIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
 interface User {
   id: number;
@@ -65,6 +65,7 @@ export default function UserModal({ user, onClose, onSuccess }: UserModalProps) 
     try {
       // For editing, password is optional
       if (isEditing && !formData.password) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         delete (formData as any).password; // Remove password if empty during edit
       }
 

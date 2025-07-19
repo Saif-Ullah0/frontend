@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-html-link-for-pages */
 export default function CancelPage() {
   return (
     <main className="relative min-h-screen bg-[#0b0e1a] text-white flex items-center justify-center px-4 py-20 overflow-hidden">

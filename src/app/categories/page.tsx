@@ -5,21 +5,11 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { 
   Search, 
-  Filter, 
   Grid3X3, 
   List, 
-  Star, 
-  Users, 
-  Clock, 
   BookOpen,
   TrendingUp,
-  Award,
-  Zap,
-  ChevronRight,
   ArrowRight,
-  Heart,
-  Play,
-  Plus
 } from 'lucide-react';
 
 type Category = {
@@ -27,8 +17,9 @@ type Category = {
   name: string;
   description: string;
   imageUrl: string;
-  coursesCount?: number;
-  color?: string;
+  _count?: {
+    courses: number;
+  };
 };
 
 type Course = {
@@ -40,11 +31,6 @@ type Course = {
   category: {
     name: string;
   };
-  rating?: number;
-  studentsCount?: number;
-  duration?: string;
-  level?: string;
-  instructor?: string;
 };
 
 export default function CategoriesPage() {
@@ -53,8 +39,6 @@ export default function CategoriesPage() {
   const [searchResults, setSearchResults] = useState<Course[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
-  const [selectedFilter, setSelectedFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('relevance');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   useEffect(() => {
@@ -62,22 +46,7 @@ export default function CategoriesPage() {
       try {
         const res = await fetch('http://localhost:5000/api/categories/public');
         const data = await res.json();
-        
-        // Add mock data for better presentation
-        const enhancedCategories = data.map((cat: Category, index: number) => ({
-          ...cat,
-          coursesCount: Math.floor(Math.random() * 50) + 10,
-          color: [
-            'from-blue-500 to-purple-500',
-            'from-green-500 to-teal-500', 
-            'from-orange-500 to-red-500',
-            'from-purple-500 to-pink-500',
-            'from-cyan-500 to-blue-500',
-            'from-yellow-500 to-orange-500'
-          ][index % 6]
-        }));
-        
-        setCategories(enhancedCategories);
+        setCategories(data);
       } catch (error) {
         console.error('Error fetching categories:', error);
       } finally {
@@ -97,18 +66,7 @@ export default function CategoriesPage() {
     try {
       const res = await fetch(`http://localhost:5000/api/courses/search?query=${searchQuery}`);
       const data = await res.json();
-      
-      // Add mock data for better presentation
-      const enhancedResults = data.map((course: Course) => ({
-        ...course,
-        rating: Math.round((Math.random() * 2 + 3) * 10) / 10, // 3.0-5.0
-        studentsCount: Math.floor(Math.random() * 5000) + 100,
-        duration: `${Math.floor(Math.random() * 20) + 5}h`,
-        level: ['Beginner', 'Intermediate', 'Advanced'][Math.floor(Math.random() * 3)],
-        instructor: ['Dr. Sarah Johnson', 'Prof. Mike Chen', 'Emily Rodriguez', 'David Kim'][Math.floor(Math.random() * 4)]
-      }));
-      
-      setSearchResults(enhancedResults);
+      setSearchResults(data);
     } catch (error) {
       console.error('Search failed:', error);
       setSearchResults([]);
@@ -193,37 +151,14 @@ export default function CategoriesPage() {
                 </div>
               </div>
 
-              {/* Search Filters */}
+              {/* Search View Toggle */}
               {searchResults !== null && (
-                <div className="flex flex-wrap items-center gap-4 mt-6 pt-6 border-t border-white/10">
-                  <div className="flex items-center gap-2">
-                    <Filter className="w-4 h-4 text-gray-400" />
-                    <span className="text-gray-400 text-sm">Filters:</span>
+                <div className="flex items-center justify-between mt-6 pt-6 border-t border-white/10">
+                  <div className="text-sm text-gray-400">
+                    {searchResults.length} courses found
                   </div>
                   
-                  <select
-                    value={selectedFilter}
-                    onChange={(e) => setSelectedFilter(e.target.value)}
-                    className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none"
-                  >
-                    <option value="all" className="bg-gray-900">All Levels</option>
-                    <option value="beginner" className="bg-gray-900">Beginner</option>
-                    <option value="intermediate" className="bg-gray-900">Intermediate</option>
-                    <option value="advanced" className="bg-gray-900">Advanced</option>
-                  </select>
-
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none"
-                  >
-                    <option value="relevance" className="bg-gray-900">Most Relevant</option>
-                    <option value="rating" className="bg-gray-900">Highest Rated</option>
-                    <option value="students" className="bg-gray-900">Most Popular</option>
-                    <option value="price" className="bg-gray-900">Price: Low to High</option>
-                  </select>
-
-                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg p-1 ml-auto">
+                  <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg p-1">
                     <button
                       onClick={() => setViewMode('grid')}
                       className={`p-2 rounded-md transition-all duration-300 ${
@@ -252,11 +187,8 @@ export default function CategoriesPage() {
             <div>
               <div className="flex items-center justify-between mb-8">
                 <h2 className="text-2xl font-bold text-white">
-                  Search Results for "{searchQuery}"
+                  Search Results for &quot;{searchQuery}&quot;
                 </h2>
-                <span className="text-gray-400">
-                  {searchResults.length} courses found
-                </span>
               </div>
 
               {searchResults.length === 0 ? (
@@ -287,19 +219,6 @@ export default function CategoriesPage() {
                         href={`/courses/${course.id}`}
                         className="group bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:shadow-blue-500/10"
                       >
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex items-center gap-2">
-                            <div className="px-3 py-1 bg-blue-500/20 border border-blue-500/30 rounded-full text-xs text-blue-300 font-medium">
-                              {course.level}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                              <span className="text-sm text-gray-300">{course.rating}</span>
-                            </div>
-                          </div>
-                          <Heart className="w-5 h-5 text-gray-400 group-hover:text-red-400 transition-colors cursor-pointer" />
-                        </div>
-
                         <h3 className="text-xl font-bold text-white mb-2 group-hover:text-blue-300 transition-colors line-clamp-2">
                           {course.title}
                         </h3>
@@ -308,27 +227,12 @@ export default function CategoriesPage() {
                           {course.description}
                         </p>
 
-                        <div className="flex items-center gap-4 text-xs text-gray-400 mb-4">
-                          <div className="flex items-center gap-1">
-                            <Users className="w-4 h-4" />
-                            <span>{course.studentsCount?.toLocaleString()}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-4 h-4" />
-                            <span>{course.duration}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <BookOpen className="w-4 h-4" />
-                            <span>{course.category.name}</span>
-                          </div>
-                        </div>
-
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-2xl font-bold text-white">
                               {course.price === 0 ? 'Free' : `$${course.price}`}
                             </p>
-                            <p className="text-xs text-gray-400">by {course.instructor}</p>
+                            <p className="text-xs text-gray-400">{course.category.name}</p>
                           </div>
                           <div className="flex items-center gap-2 text-blue-400 group-hover:text-blue-300">
                             <span className="text-sm font-medium">View Course</span>
@@ -344,51 +248,28 @@ export default function CategoriesPage() {
                         className="group bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all duration-300"
                       >
                         <div className="flex items-center gap-6">
-                          <div className="flex-shrink-0 w-20 h-20 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center">
+                          <div className="flex-shrink-0 w-16 h-16 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center">
                             <BookOpen className="w-8 h-8 text-blue-400" />
                           </div>
 
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between mb-2">
-                              <h3 className="text-lg font-bold text-white group-hover:text-blue-300 transition-colors line-clamp-1">
-                                {course.title}
-                              </h3>
-                              <div className="flex items-center gap-2 ml-4">
-                                <div className="flex items-center gap-1">
-                                  <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                                  <span className="text-sm text-gray-300">{course.rating}</span>
-                                </div>
-                                <Heart className="w-5 h-5 text-gray-400 group-hover:text-red-400 transition-colors cursor-pointer" />
-                              </div>
-                            </div>
+                            <h3 className="text-lg font-bold text-white group-hover:text-blue-300 transition-colors line-clamp-1 mb-2">
+                              {course.title}
+                            </h3>
                             
                             <p className="text-gray-400 text-sm mb-3 line-clamp-2">
                               {course.description}
                             </p>
 
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-6 text-xs text-gray-400">
-                                <span className="px-2 py-1 bg-blue-500/20 rounded text-blue-300">{course.level}</span>
-                                <div className="flex items-center gap-1">
-                                  <Users className="w-4 h-4" />
-                                  <span>{course.studentsCount?.toLocaleString()}</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <Clock className="w-4 h-4" />
-                                  <span>{course.duration}</span>
-                                </div>
-                              </div>
-                              
-                              <div className="text-right">
-                                <p className="text-xl font-bold text-white">
-                                  {course.price === 0 ? 'Free' : `$${course.price}`}
-                                </p>
-                                <p className="text-xs text-gray-400">by {course.instructor}</p>
-                              </div>
+                              <span className="text-xs text-gray-400">{course.category.name}</span>
+                              <p className="text-xl font-bold text-white">
+                                {course.price === 0 ? 'Free' : `$${course.price}`}
+                              </p>
                             </div>
                           </div>
 
-                          <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-white group-hover:translate-x-1 transition-all duration-300" />
+                          <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-white group-hover:translate-x-1 transition-all duration-300" />
                         </div>
                       </Link>
                     )
@@ -432,12 +313,14 @@ export default function CategoriesPage() {
                           alt={category.name}
                           className="w-full h-36 object-cover group-hover:scale-110 transition-transform duration-500"
                         />
-                        <div className={`absolute inset-0 bg-gradient-to-r ${category.color} opacity-20 group-hover:opacity-30 transition-opacity`}></div>
-                        <div className="absolute top-3 right-3">
-                          <div className="px-3 py-1 bg-black/50 backdrop-blur-sm rounded-full text-xs text-white">
-                            {category.coursesCount} courses
+                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 opacity-20 group-hover:opacity-30 transition-opacity"></div>
+                        {category._count?.courses && (
+                          <div className="absolute top-3 right-3">
+                            <div className="px-3 py-1 bg-black/50 backdrop-blur-sm rounded-full text-xs text-white">
+                              {category._count.courses} courses
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
 
                       <h3 className="text-xl font-bold text-white mb-2 group-hover:text-blue-300 transition-colors">
@@ -451,7 +334,7 @@ export default function CategoriesPage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-sm text-gray-400">
                           <BookOpen className="w-4 h-4" />
-                          <span>{category.coursesCount} courses</span>
+                          <span>{category._count?.courses || 0} courses</span>
                         </div>
                         <div className="flex items-center gap-2 text-blue-400 group-hover:text-blue-300">
                           <span className="text-sm font-medium">Explore</span>
@@ -463,22 +346,19 @@ export default function CategoriesPage() {
                 </div>
               )}
 
-              {/* Featured Section */}
+              {/* CTA Section */}
               <div className="mt-16 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-2xl p-8 backdrop-blur-xl">
                 <div className="text-center">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-full mb-4">
-                    <Zap className="w-8 h-8 text-purple-400" />
-                  </div>
-                  <h3 className="text-2xl font-bold text-white mb-4">Can't find what you're looking for?</h3>
+                  <h3 className="text-2xl font-bold text-white mb-4">Can not find what you are looking for?</h3>
                   <p className="text-gray-400 mb-6 max-w-2xl mx-auto">
-                    Our course catalog is constantly growing. Use our search feature to find specific topics or reach out to suggest new courses.
+                    Our course catalog is constantly growing. Use our search feature to find specific topics.
                   </p>
                   <button
                     onClick={() => document.querySelector('input')?.focus()}
                     className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-3 mx-auto"
                   >
                     <Search className="w-5 h-5" />
-                    Try Advanced Search
+                    Try Search
                   </button>
                 </div>
               </div>

@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { XMarkIcon, PhotoIcon, AcademicCapIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, AcademicCapIcon } from '@heroicons/react/24/outline';
 
 interface Course {
   id: number;
@@ -143,7 +143,7 @@ export default function CourseModal({ course, categories, onClose, onSuccess }: 
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value, type } = e.target;
+    const { name, value } = e.target;
     
     if (name === 'price') {
       setFormData(prev => ({

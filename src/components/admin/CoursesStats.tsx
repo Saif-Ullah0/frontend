@@ -3,8 +3,6 @@
 
 import { 
   AcademicCapIcon, 
-  CurrencyDollarIcon, 
-  UserGroupIcon,
   GiftIcon,
   BanknotesIcon
 } from '@heroicons/react/24/outline';
@@ -13,25 +11,16 @@ interface CoursesStatsProps {
   totalCourses: number;
   freeCourses: number;
   paidCourses: number;
-  totalEnrollments: number;
-  totalRevenue: number;
+  // totalEnrollments: number; // Removed
+  // totalRevenue: number;   // Removed
 }
 
 export default function CoursesStats({ 
   totalCourses, 
   freeCourses, 
   paidCourses, 
-  totalEnrollments,
-  totalRevenue 
 }: CoursesStatsProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
+  
 
   const stats = [
     {
@@ -57,27 +46,12 @@ export default function CoursesStats({
       color: 'from-yellow-500 to-yellow-600',
       bgColor: 'from-yellow-500/20 to-yellow-600/20',
       description: 'Premium courses'
-    },
-    {
-      name: 'Total Enrollments',
-      value: totalEnrollments.toLocaleString(),
-      icon: UserGroupIcon,
-      color: 'from-purple-500 to-purple-600',
-      bgColor: 'from-purple-500/20 to-purple-600/20',
-      description: 'Student enrollments'
-    },
-    {
-      name: 'Total Revenue',
-      value: formatCurrency(totalRevenue),
-      icon: CurrencyDollarIcon,
-      color: 'from-emerald-500 to-emerald-600',
-      bgColor: 'from-emerald-500/20 to-emerald-600/20',
-      description: 'Revenue generated'
     }
+    // Removed Total Enrollments and Total Revenue entries
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
+    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"> {/* Adjusted grid-cols-3 for 3 stats */}
       {stats.map((stat) => (
         <div
           key={stat.name}
