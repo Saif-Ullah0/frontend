@@ -34,18 +34,13 @@ export default function AdminDashboard() {
   const router = useRouter();
 
   useEffect(() => {
-    console.log('🚀 Dashboard: Component mounted, fetching dashboard data...');
     fetchDashboardData();
   }, []);
 
   const fetchDashboardData = async () => {
-    console.log('🔍 Dashboard: Starting fetchDashboardData...');
-    
     try {
       setLoading(true);
       setError(null);
-      
-      console.log('🔍 Dashboard: About to fetch /api/admin/dashboard...');
       
       const response = await fetch('http://localhost:5000/api/admin/dashboard', {
         credentials: 'include',
@@ -54,84 +49,60 @@ export default function AdminDashboard() {
         }
       });
 
-      console.log('🔍 Dashboard: Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        url: response.url
-      });
-
       if (!response.ok) {
-        console.log('❌ Dashboard: Response not ok:', response.status);
-        
         if (response.status === 401) {
-          console.log('❌ Dashboard: 401 Unauthorized - redirecting to login');
           router.push('/login');
           return;
         }
         if (response.status === 403) {
-          console.log('❌ Dashboard: 403 Forbidden - redirecting to home');
           router.push('/');
           return;
         }
-        
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      console.log('🔍 Dashboard: About to parse JSON...');
       const data = await response.json();
-      console.log('🔍 Dashboard: Dashboard data received:', data);
-      
       setDashboardData(data);
-      console.log('✅ Dashboard: Dashboard data set successfully!');
       
     } catch (err: unknown) {
-      console.error('❌ Dashboard: Error fetching dashboard data:', err);
-      
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      const errorStack = err instanceof Error ? err.stack : 'No stack trace';
-      
-      console.error('❌ Dashboard: Error details:', {
-        message: errorMessage,
-        stack: errorStack
-      });
-      
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      console.error('Error fetching dashboard data:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load dashboard data';
+      setError(errorMessage);
     } finally {
-      console.log('🔍 Dashboard: Setting loading to false');
       setLoading(false);
     }
   };
 
   if (loading) {
-    console.log('🔍 Dashboard: Rendering loading state...');
     return (
       <AdminLayout>
         <div className="flex items-center justify-center min-h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <span className="text-white">Loading dashboard...</span>
+          </div>
         </div>
       </AdminLayout>
     );
   }
 
   if (error) {
-    console.log('🔍 Dashboard: Rendering error state:', error);
     return (
       <AdminLayout>
         <div className="text-center py-12">
-          <div className="text-red-500 mb-4">Error: {error}</div>
-          <button
-            onClick={fetchDashboardData}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-          >
-            Retry
-          </button>
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6 max-w-md mx-auto">
+            <div className="text-red-400 mb-4">⚠️ {error}</div>
+            <button
+              onClick={fetchDashboardData}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
         </div>
       </AdminLayout>
     );
   }
-
-  console.log('🔍 Dashboard: Rendering main dashboard with data:', dashboardData);
 
   return (
     <AdminLayout>
@@ -139,7 +110,7 @@ export default function AdminDashboard() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Admin Dashboard</h1>
-          <p className="text-gray-400">Welcome back! Here is your platform overview.</p>
+          <p className="text-gray-400">Welcome back! Here is your platform overview and recent activity.</p>
         </div>
 
         {/* Stats Cards */}
@@ -156,6 +127,44 @@ export default function AdminDashboard() {
         {dashboardData && (
           <RecentEnrollments enrollments={dashboardData.recentEnrollments} />
         )}
+
+        {/* Quick Actions */}
+        <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
+          <h3 className="text-xl font-bold text-white mb-4">Quick Actions</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <button
+              onClick={() => router.push('/admin/courses')}
+              className="p-4 bg-blue-500/20 border border-blue-500/30 rounded-xl hover:bg-blue-500/30 transition-colors text-left"
+            >
+              <div className="text-blue-400 font-semibold">Manage Courses</div>
+              <div className="text-gray-400 text-sm mt-1">Add or edit courses</div>
+            </button>
+            
+            <button
+              onClick={() => router.push('/admin/categories')}
+              className="p-4 bg-purple-500/20 border border-purple-500/30 rounded-xl hover:bg-purple-500/30 transition-colors text-left"
+            >
+              <div className="text-purple-400 font-semibold">Manage Categories</div>
+              <div className="text-gray-400 text-sm mt-1">Organize course topics</div>
+            </button>
+            
+            <button
+              onClick={() => router.push('/admin/users')}
+              className="p-4 bg-green-500/20 border border-green-500/30 rounded-xl hover:bg-green-500/30 transition-colors text-left"
+            >
+              <div className="text-green-400 font-semibold">Manage Users</div>
+              <div className="text-gray-400 text-sm mt-1">User administration</div>
+            </button>
+            
+            <button
+              onClick={() => router.push('/admin/modules')}
+              className="p-4 bg-orange-500/20 border border-orange-500/30 rounded-xl hover:bg-orange-500/30 transition-colors text-left"
+            >
+              <div className="text-orange-400 font-semibold">Manage Modules</div>
+              <div className="text-gray-400 text-sm mt-1">Course content structure</div>
+            </button>
+          </div>
+        </div>
       </div>
     </AdminLayout>
   );

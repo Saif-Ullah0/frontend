@@ -89,11 +89,9 @@ export default function CourseDetail({ course }: CourseDetailProps) {
       name: 'Dr. Sarah Johnson',
       bio: 'Senior Software Engineer with 10+ years of experience in web development and education. Passionate about teaching and helping students achieve their goals.',
       avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
-      rating: 4.9,
-      studentsCount: 15420
+
     },
-    rating: course.rating || 4.8,
-    studentsCount: course.studentsCount || 12543,
+
     duration: course.duration || '24 hours',
     level: course.level || 'Intermediate',
     language: course.language || 'English',
@@ -285,11 +283,7 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                     <p className="text-gray-300 text-lg mb-6">{enhancedCourse.description}</p>
                     
                     <div className="flex items-center gap-6 text-sm text-gray-400">
-                      <div className="flex items-center gap-2">
-                        <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                        <span className="text-white font-semibold">{enhancedCourse.rating}</span>
-                        <span>({enhancedCourse.studentsCount?.toLocaleString()} students)</span>
-                      </div>
+                     
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4" />
                         <span>{enhancedCourse.duration}</span>
@@ -307,26 +301,7 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                 </div>
 
                 {/* Instructor Info */}
-                <div className="flex items-center gap-4 p-4 bg-white/5 rounded-xl border border-white/10">
-                  <img
-                    src={enhancedCourse.instructor.avatar}
-                    alt={enhancedCourse.instructor.name}
-                    className="w-12 h-12 rounded-full object-cover"
-                  />
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-white">{enhancedCourse.instructor.name}</h3>
-                    <div className="flex items-center gap-4 text-sm text-gray-400">
-                      <div className="flex items-center gap-1">
-                        <Star className="w-3 h-3 text-yellow-400 fill-current" />
-                        <span>{enhancedCourse.instructor.rating} instructor rating</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Users className="w-3 h-3" />
-                        <span>{enhancedCourse.instructor.studentsCount?.toLocaleString()} students</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                
               </div>
 
               {/* Tab Navigation */}
