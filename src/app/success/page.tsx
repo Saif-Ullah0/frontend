@@ -10,12 +10,10 @@ import {
   Award, 
   Calendar,
   ArrowRight,
-  Star,
   Gift,
   Sparkles,
   Trophy,
   Share2,
-  Clock,
   Infinity
 } from 'lucide-react';
 import Link from 'next/link';
@@ -113,7 +111,7 @@ export default function SuccessPage() {
           setPaymentDetails({
             transactionId: data.transactionId || sessionId,
             amount: data.amount || data.order.totalAmount,
-            currency: data.currency || 'PKR',
+            currency: data.currency || 'USD',
             order: data.order,
             paymentDate: data.order.createdAt || new Date().toISOString()
           });
@@ -230,8 +228,8 @@ export default function SuccessPage() {
               className="absolute w-2 h-2 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-full animate-confetti"
               style={{
                 left: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 3}s`,
-                animationDuration: `${3 + Math.random() * 2}s`
+                animationDelay: `${Math.random() * 1}s`,
+                animationDuration: `${3 + Math.random() * 1}s`
               }}
             />
           ))}
@@ -286,24 +284,10 @@ export default function SuccessPage() {
                       <h3 className="text-xl font-bold text-white mb-2">{item.course.title}</h3>
                       <p className="text-gray-400 text-sm mb-3 line-clamp-2">{item.course.description}</p>
                       
-                      <div className="flex items-center gap-6 text-sm text-gray-400 mb-4">
-                        <div className="flex items-center gap-1">
-                          <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                          <span>{item.course.rating || 4.8}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="w-4 h-4" />
-                          <span>{item.course.duration || '24h'}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <BookOpen className="w-4 h-4" />
-                          <span>{item.course.modules || 45} modules</span>
-                        </div>
-                        <span className="px-2 py-1 bg-blue-500/20 rounded text-blue-300">{item.course.category.name}</span>
-                      </div>
+                     
 
                       <p className="text-gray-400">
-                        Instructor: <span className="text-white">{item.course.instructor || 'Expert Instructor'}</span>
+                        Instructor: <span className="text-white">{item.course.instructor || 'Dr Waleed'}</span>
                       </p>
                     </div>
 

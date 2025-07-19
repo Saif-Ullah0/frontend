@@ -13,15 +13,12 @@ import {
   CheckCircle2,
   Heart,
   Share2,
-  Download,
   Globe,
-  Smartphone,
   Monitor,
   ArrowLeft,
   ChevronDown,
   ChevronUp,
   User,
-  Calendar,
   Target,
   Zap,
   Shield,
@@ -335,7 +332,7 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                       <div>
                         <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                           <Target className="w-5 h-5 text-green-400" />
-                          What You'll Learn
+                          What You will Learn
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {enhancedCourse.whatYouWillLearn.map((item, index) => (
@@ -565,7 +562,7 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                   <div className="space-y-3">
                     <div className="bg-green-500/20 border border-green-500/30 rounded-xl p-4 text-center">
                       <CheckCircle2 className="w-8 h-8 text-green-400 mx-auto mb-2" />
-                      <p className="text-green-300 font-semibold">You're enrolled!</p>
+                      <p className="text-green-300 font-semibold">You are enrolled!</p>
                     </div>
                     <button
                       onClick={() => router.push(`/courses/${course.id}/modules`)}

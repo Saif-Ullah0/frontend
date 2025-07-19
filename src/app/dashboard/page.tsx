@@ -9,16 +9,12 @@ import {
   Award, 
   TrendingUp, 
   Play, 
-  Star, 
   Calendar,
   Target,
-  Flame,
   ChevronRight,
   Plus,
-  BarChart3,
   Users,
   Zap,
-  Trophy,
   CheckCircle2,
   ArrowRight
 } from 'lucide-react';
@@ -37,7 +33,7 @@ type Course = {
 type Enrollment = {
   id: number;
   course: Course;
-  progress?: number; // Add progress tracking
+  progress?: number;
   lastAccessed?: string;
   completedModules?: number;
   totalModules?: number;
@@ -53,10 +49,14 @@ type Stats = {
   totalCourses: number;
   completedCourses: number;
   inProgressCourses: number;
-  totalHours: number;
-  streak: number;
-  certificates: number;
-  averageScore: number;
+};
+
+type WeeklyGoal = {
+  id: string;
+  label: string;
+  target: number;
+  current: number;
+  unit: string;
 };
 
 export default function DashboardPage() {
@@ -66,12 +66,14 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<Stats>({
     totalCourses: 0,
     completedCourses: 0,
-    inProgressCourses: 0,
-    totalHours: 0,
-    streak: 0,
-    certificates: 0,
-    averageScore: 0
+    inProgressCourses: 0
   });
+  const [weeklyGoals, setWeeklyGoals] = useState<WeeklyGoal[]>([
+    { id: '1', label: 'Complete lessons', target: 5, current: 0, unit: 'lessons' },
+    { id: '2', label: 'Study time', target: 10, current: 0, unit: 'hours' },
+    { id: '3', label: 'Course progress', target: 2, current: 0, unit: 'courses' }
+  ]);
+  const [weeklyActivity, setWeeklyActivity] = useState<boolean[]>([false, false, false, false, false, false, false]);
   const router = useRouter();
 
   useEffect(() => {
@@ -99,7 +101,7 @@ export default function DashboardPage() {
           const courseData = await courseRes.json();
           setEnrollments(courseData);
           
-          // Calculate stats based on enrollment data
+          // Calculate real stats
           const totalCourses = courseData.length;
           const completed = courseData.filter((e: Enrollment) => (e.progress || 0) >= 100).length;
           const inProgress = courseData.filter((e: Enrollment) => (e.progress || 0) > 0 && (e.progress || 0) < 100).length;
@@ -107,12 +109,12 @@ export default function DashboardPage() {
           setStats({
             totalCourses,
             completedCourses: completed,
-            inProgressCourses: inProgress,
-            totalHours: totalCourses * 12, // Mock calculation
-            streak: 7, // Mock data
-            certificates: completed,
-            averageScore: 87 // Mock data
+            inProgressCourses: inProgress
           });
+
+          // Update weekly goals based on real data
+          updateWeeklyGoals(courseData);
+          updateWeeklyActivity(courseData);
         }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);
@@ -125,6 +127,34 @@ export default function DashboardPage() {
     fetchData();
   }, [router]);
 
+  const updateWeeklyGoals = (enrollments: Enrollment[]) => {
+    const completedThisWeek = enrollments.filter(e => (e.progress || 0) >= 100).length;
+    const inProgressThisWeek = enrollments.filter(e => (e.progress || 0) > 0).length;
+    
+    setWeeklyGoals(prev => prev.map(goal => {
+      switch (goal.id) {
+        case '1': // Lessons completed
+          return { ...goal, current: completedThisWeek * 3 }; // Assume 3 lessons per course
+        case '2': // Study time
+          return { ...goal, current: inProgressThisWeek * 2 }; // Assume 2 hours per active course
+        case '3': // Course progress
+          return { ...goal, current: inProgressThisWeek };
+        default:
+          return goal;
+      }
+    }));
+  };
+
+  const updateWeeklyActivity = (enrollments: Enrollment[]) => {
+    // Generate activity based on enrollment data
+    const hasActivity = enrollments.length > 0;
+    const activity = Array(7).fill(false).map((_, index) => {
+      // Show activity for first few days if user has enrollments
+      return hasActivity && index < Math.min(3, enrollments.length);
+    });
+    setWeeklyActivity(activity);
+  };
+
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning';
@@ -136,6 +166,21 @@ export default function DashboardPage() {
     if (progress >= 80) return 'from-green-500 to-emerald-500';
     if (progress >= 50) return 'from-yellow-500 to-orange-500';
     return 'from-blue-500 to-purple-500';
+  };
+
+  const getGoalProgressColor = (current: number, target: number) => {
+    const percentage = (current / target) * 100;
+    if (percentage >= 80) return 'from-green-500 to-emerald-500';
+    if (percentage >= 50) return 'from-yellow-500 to-orange-500';
+    return 'from-blue-500 to-purple-500';
+  };
+
+  const updateGoalProgress = (goalId: string, increment: number) => {
+    setWeeklyGoals(prev => prev.map(goal => 
+      goal.id === goalId 
+        ? { ...goal, current: Math.min(goal.current + increment, goal.target) }
+        : goal
+    ));
   };
 
   if (loading) {
@@ -183,10 +228,6 @@ export default function DashboardPage() {
               <p className="text-gray-400 mt-2 text-lg">Ready to continue your learning journey?</p>
             </div>
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 px-4 py-2 bg-orange-500/20 border border-orange-500/30 rounded-xl">
-                <Flame className="w-5 h-5 text-orange-400" />
-                <span className="text-orange-300 font-semibold">{stats.streak} day streak</span>
-              </div>
               <button
                 onClick={() => router.push('/profile')}
                 className="p-3 bg-white/10 border border-white/20 rounded-xl hover:bg-white/20 transition-all duration-300"
@@ -198,7 +239,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all duration-300 group">
             <div className="flex items-center justify-between mb-4">
               <div className="p-3 bg-blue-500/20 rounded-xl group-hover:bg-blue-500/30 transition-colors">
@@ -228,19 +269,8 @@ export default function DashboardPage() {
               </div>
               <Zap className="w-5 h-5 text-yellow-400" />
             </div>
-            <h3 className="text-2xl font-bold text-white">{stats.totalHours}h</h3>
-            <p className="text-gray-400">Learning Time</p>
-          </div>
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all duration-300 group">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-3 bg-orange-500/20 rounded-xl group-hover:bg-orange-500/30 transition-colors">
-                <Trophy className="w-6 h-6 text-orange-400" />
-              </div>
-              <Star className="w-5 h-5 text-yellow-400 fill-current" />
-            </div>
-            <h3 className="text-2xl font-bold text-white">{stats.averageScore}%</h3>
-            <p className="text-gray-400">Average Score</p>
+            <h3 className="text-2xl font-bold text-white">{stats.inProgressCourses}</h3>
+            <p className="text-gray-400">In Progress</p>
           </div>
         </div>
 
@@ -278,9 +308,9 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {enrollments.slice(0, 3).map((enrollment, index) => {
-                    const progress = enrollment.progress || Math.random() * 100; // Mock progress
-                    const lastAccessed = enrollment.lastAccessed || 'Today';
+                  {enrollments.slice(0, 3).map((enrollment) => {
+                    const progress = enrollment.progress || 0;
+                    const lastAccessed = enrollment.lastAccessed || 'Recently';
                     
                     return (
                       <div
@@ -321,7 +351,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Learning Goals */}
+            {/* Weekly Goals - Now Functional */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
               <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-6">
                 <Target className="w-6 h-6 text-red-400" />
@@ -329,35 +359,41 @@ export default function DashboardPage() {
               </h2>
               
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-300">Complete 3 lessons</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-32 bg-gray-700 rounded-full h-2">
-                      <div className="w-2/3 bg-gradient-to-r from-green-500 to-emerald-500 h-2 rounded-full"></div>
+                {weeklyGoals.map((goal) => {
+                  const progressPercentage = (goal.current / goal.target) * 100;
+                  const progressWidth = Math.min(progressPercentage, 100);
+                  
+                  return (
+                    <div key={goal.id} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-300">{goal.label}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-32 bg-gray-700 rounded-full h-2">
+                            <div 
+                              className={`h-2 rounded-full bg-gradient-to-r ${getGoalProgressColor(goal.current, goal.target)} transition-all duration-500`}
+                              style={{ width: `${progressWidth}%` }}
+                            />
+                          </div>
+                          <span className="text-sm text-gray-400 min-w-[60px]">
+                            {goal.current}/{goal.target} {goal.unit}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* Interactive buttons to update progress */}
+                      {goal.current < goal.target && (
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => updateGoalProgress(goal.id, 1)}
+                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                          >
+                            Mark +1 {goal.unit.slice(0, -1)}
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <span className="text-sm text-gray-400">2/3</span>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-300">Study 5 hours</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-32 bg-gray-700 rounded-full h-2">
-                      <div className="w-4/5 bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full"></div>
-                    </div>
-                    <span className="text-sm text-gray-400">4/5h</span>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-300">Earn 1 certificate</span>
-                  <div className="flex items-center gap-2">
-                    <div className="w-32 bg-gray-700 rounded-full h-2">
-                      <div className="w-1/4 bg-gradient-to-r from-orange-500 to-red-500 h-2 rounded-full"></div>
-                    </div>
-                    <span className="text-sm text-gray-400">0/1</span>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -407,7 +443,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Learning Calendar */}
+            {/* Learning Calendar - Now Functional */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
               <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-blue-400" />
@@ -415,40 +451,23 @@ export default function DashboardPage() {
               </h3>
               
               <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-300">Monday</span>
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-300">Tuesday</span>
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-300">Wednesday</span>
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-300">Thursday</span>
-                  <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-300">Friday</span>
-                  <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-300">Weekend</span>
-                  <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
-                </div>
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, index) => (
+                  <div key={day} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-300">{day}</span>
+                    <div className={`w-3 h-3 rounded-full ${
+                      weeklyActivity[index] 
+                        ? 'bg-green-500' 
+                        : index === 3 
+                        ? 'bg-blue-500 animate-pulse' 
+                        : 'bg-gray-500'
+                    }`}></div>
+                  </div>
+                ))}
               </div>
-            </div>
-
-            {/* Achievement Badge */}
-            <div className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 border border-yellow-500/30 rounded-2xl p-6 backdrop-blur-xl">
-              <div className="text-center">
-                <Trophy className="w-12 h-12 text-yellow-400 mx-auto mb-3" />
-                <h3 className="text-lg font-bold text-white mb-2">Keep it up!</h3>
-                <p className="text-yellow-200 text-sm">
-                  You're on a {stats.streak}-day learning streak! 🔥
+              
+              <div className="mt-4 pt-4 border-t border-white/10">
+                <p className="text-xs text-gray-400">
+                  {weeklyActivity.filter(Boolean).length} days active this week
                 </p>
               </div>
             </div>

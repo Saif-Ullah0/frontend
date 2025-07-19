@@ -5,18 +5,10 @@ import { useRouter } from 'next/navigation';
 import { 
   BookOpen, 
   Play, 
-  Clock, 
-  Award, 
   Search, 
-  Filter, 
   Grid3X3, 
   List, 
-  Star,
-  TrendingUp,
-  Calendar,
   ChevronRight,
-  BarChart3,
-  Target,
   Plus,
   CheckCircle2,
   AlertCircle
@@ -26,9 +18,7 @@ type Course = {
   id: number;
   title: string;
   description: string;
-  price: number;
   category: {
-    id: number;
     name: string;
   };
 };
@@ -54,30 +44,24 @@ export default function MyCoursesClient() {
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/enroll', {
+        console.log('🔄 Fetching enrolled courses with progress...');
+        
+        // Fetch enrolled courses with progress data from the new API
+        const res = await fetch('http://localhost:5000/api/progress/all', {
           credentials: 'include',
         });
 
         if (!res.ok) {
+          console.error('❌ Failed to fetch progress data:', res.status);
           router.push('/login');
           return;
         }
 
         const data = await res.json();
-        
-        // Add mock progress data for demonstration
-        const coursesWithProgress = data.map((enrollment: Enrollment, index: number) => ({
-          ...enrollment,
-          progress: Math.floor(Math.random() * 100),
-          lastAccessed: index === 0 ? 'Today' : index === 1 ? 'Yesterday' : `${index + 1} days ago`,
-          completedModules: Math.floor(Math.random() * 10),
-          totalModules: Math.floor(Math.random() * 15) + 10,
-          enrolledAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
-        }));
-        
-        setCourses(coursesWithProgress);
+        console.log('✅ Progress data loaded:', data);
+        setCourses(data);
       } catch (err) {
-        console.error('Error fetching courses:', err);
+        console.error('❌ Error fetching courses:', err);
         router.push('/login');
       } finally {
         setLoading(false);
@@ -119,6 +103,25 @@ export default function MyCoursesClient() {
     return 'Not Started';
   };
 
+  const formatLastAccessed = (dateString?: string) => {
+    if (!dateString) return 'Recently';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  };
+
+  const formatEnrollmentDate = (dateString?: string) => {
+    if (!dateString) return 'Recently';
+    const date = new Date(dateString);
+    return date.toLocaleDateString();
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] text-white">
@@ -141,7 +144,7 @@ export default function MyCoursesClient() {
             <BookOpen className="w-12 h-12 text-blue-400" />
           </div>
           <h2 className="text-3xl font-bold text-white mb-4">Start Your Learning Journey</h2>
-          <p className="text-gray-400 mb-8 text-lg">You haven't enrolled in any courses yet. Discover amazing courses and start learning today!</p>
+          <p className="text-gray-400 mb-8 text-lg">You have not enrolled in any courses yet. Discover amazing courses and start learning today!</p>
           <button
             className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-3 mx-auto"
             onClick={() => router.push('/categories')}
@@ -170,7 +173,7 @@ export default function MyCoursesClient() {
         </div>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-blue-500/20 rounded-xl">
@@ -207,20 +210,6 @@ export default function MyCoursesClient() {
                   {courses.filter(c => (c.progress || 0) > 0 && (c.progress || 0) < 100).length}
                 </h3>
                 <p className="text-gray-400 text-sm">In Progress</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-purple-500/20 rounded-xl">
-                <Target className="w-6 h-6 text-purple-400" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-bold text-white">
-                  {Math.round(courses.reduce((acc, c) => acc + (c.progress || 0), 0) / courses.length)}%
-                </h3>
-                <p className="text-gray-400 text-sm">Avg Progress</p>
               </div>
             </div>
           </div>
@@ -325,7 +314,7 @@ export default function MyCoursesClient() {
                   <div className="space-y-3">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-gray-400">Progress</span>
-                      <span className="font-semibold text-white">{progress}%</span>
+                      <span className="font-semibold text-white">{Math.round(progress)}%</span>
                     </div>
                     
                     <div className="w-full bg-gray-700 rounded-full h-2">
@@ -337,8 +326,15 @@ export default function MyCoursesClient() {
 
                     <div className="flex items-center justify-between text-xs text-gray-400">
                       <span>{enrollment.course.category?.name}</span>
-                      <span>Last: {enrollment.lastAccessed}</span>
+                      <span>Last: {formatLastAccessed(enrollment.lastAccessed)}</span>
                     </div>
+
+                    {enrollment.completedModules !== undefined && enrollment.totalModules !== undefined && (
+                      <div className="flex items-center justify-between text-xs text-gray-400">
+                        <span>{enrollment.completedModules}/{enrollment.totalModules} modules</span>
+                        <span>Enrolled: {formatEnrollmentDate(enrollment.enrolledAt)}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -374,14 +370,23 @@ export default function MyCoursesClient() {
                       <div className="flex items-center gap-4">
                         <div className="flex-1">
                           <div className="flex items-center justify-between text-sm mb-1">
-                            <span className="text-gray-400">{progress}% Complete</span>
-                            <span className="text-gray-400">{enrollment.course.category?.name}</span>
+                            <span className="text-gray-400">{Math.round(progress)}% Complete</span>
+                            <div className="flex items-center gap-4 text-xs text-gray-400">
+                              <span>{enrollment.course.category?.name}</span>
+                              {enrollment.completedModules !== undefined && enrollment.totalModules !== undefined && (
+                                <span>{enrollment.completedModules}/{enrollment.totalModules} modules</span>
+                              )}
+                            </div>
                           </div>
                           <div className="w-full bg-gray-700 rounded-full h-2">
                             <div 
                               className={`h-2 rounded-full bg-gradient-to-r ${getProgressColor(progress)} transition-all duration-500`}
                               style={{ width: `${progress}%` }}
                             ></div>
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-gray-400 mt-1">
+                            <span>Last accessed: {formatLastAccessed(enrollment.lastAccessed)}</span>
+                            <span>Enrolled: {formatEnrollmentDate(enrollment.enrolledAt)}</span>
                           </div>
                         </div>
                         <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-white group-hover:translate-x-1 transition-all duration-300" />

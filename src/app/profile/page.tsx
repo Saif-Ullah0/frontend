@@ -12,14 +12,8 @@ import {
   Save, 
   X, 
   BookOpen, 
-  Award, 
-  Clock, 
-  TrendingUp,
   LogOut,
-  Settings,
-  Bell,
-  Eye,
-  EyeOff
+  ArrowRight
 } from 'lucide-react';
 
 type User = {
@@ -30,56 +24,68 @@ type User = {
   createdAt: string;
 };
 
+type Enrollment = {
+  id: number;
+  course: {
+    id: number;
+    title: string;
+    category?: {
+      name: string;
+    };
+  };
+  progress?: number;
+};
+
 export default function ProfilePage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
+  const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', email: '' });
-  const [showChangePassword, setShowChangePassword] = useState(false);
-  const [passwordForm, setPasswordForm] = useState({
-    currentPassword: '',
-    newPassword: '',
-    confirmPassword: ''
-  });
-  const [showPasswords, setShowPasswords] = useState({
-    current: false,
-    new: false,
-    confirm: false
-  });
 
-  // Mock stats data - replace with real data from your API
-  const [stats] = useState({
-    coursesEnrolled: 12,
-    coursesCompleted: 8,
-    totalLearningTime: '47h 32m',
-    averageScore: 87
-  });
+  // Calculate real stats from enrollment data
+  const stats = {
+    coursesEnrolled: enrollments.length,
+    coursesCompleted: enrollments.filter(e => (e.progress || 0) >= 100).length,
+    coursesInProgress: enrollments.filter(e => (e.progress || 0) > 0 && (e.progress || 0) < 100).length
+  };
 
   useEffect(() => {
-    const fetchUser = async () => {
+    const fetchData = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/users/me', {
+        // Fetch user info
+        const userRes = await fetch('http://localhost:5000/api/users/me', {
           credentials: 'include',
         });
 
-        if (!res.ok) {
+        if (!userRes.ok) {
           router.push('/login');
           return;
         }
 
-        const data = await res.json();
-        setUser(data.user);
-        setEditForm({ name: data.user.name, email: data.user.email });
+        const userData = await userRes.json();
+        setUser(userData.user);
+        setEditForm({ name: userData.user.name, email: userData.user.email });
+
+        // Fetch enrollments for stats
+        const enrollRes = await fetch('http://localhost:5000/api/enroll', {
+          credentials: 'include',
+        });
+        
+        if (enrollRes.ok) {
+          const enrollData = await enrollRes.json();
+          setEnrollments(enrollData);
+        }
       } catch (error) {
-        console.error('Error fetching user:', error);
+        console.error('Error fetching data:', error);
         router.push('/login');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchUser();
+    fetchData();
   }, [router]);
 
   const handleEditProfile = async () => {
@@ -111,36 +117,6 @@ export default function ProfilePage() {
   const handleCancelEdit = () => {
     setEditForm({ name: user?.name || '', email: user?.email || '' });
     setIsEditing(false);
-  };
-
-  const handleChangePassword = async () => {
-    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast.error('New passwords do not match');
-      return;
-    }
-
-    try {
-      const res = await fetch('http://localhost:5000/api/users/change-password', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          currentPassword: passwordForm.currentPassword,
-          newPassword: passwordForm.newPassword
-        }),
-        credentials: 'include',
-      });
-
-      if (res.ok) {
-        toast.success('Password changed successfully!');
-        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-        setShowChangePassword(false);
-      } else {
-        const data = await res.json();
-        toast.error(data.error || 'Failed to change password');
-      }
-    } catch (error) {
-      toast.error('Something went wrong');
-    }
   };
 
   const handleLogout = async () => {
@@ -208,7 +184,7 @@ export default function ProfilePage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Profile Card */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2">
             {/* Profile Information */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl">
               <div className="flex items-center justify-between mb-6">
@@ -311,151 +287,77 @@ export default function ProfilePage() {
                 </div>
               </div>
             </div>
-
-            {/* Change Password Section */}
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-orange-400" />
-                  Security Settings
-                </h2>
-                <button
-                  onClick={() => setShowChangePassword(!showChangePassword)}
-                  className="text-orange-400 hover:text-orange-300 transition-colors"
-                >
-                  {showChangePassword ? 'Hide' : 'Change Password'}
-                </button>
-              </div>
-
-              {showChangePassword && (
-                <div className="space-y-4">
-                  <div className="relative">
-                    <input
-                      type={showPasswords.current ? 'text' : 'password'}
-                      placeholder="Current Password"
-                      value={passwordForm.currentPassword}
-                      onChange={(e) => setPasswordForm(prev => ({ ...prev, currentPassword: e.target.value }))}
-                      className="w-full px-4 py-3 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPasswords(prev => ({ ...prev, current: !prev.current }))}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
-                    >
-                      {showPasswords.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  
-                  <div className="relative">
-                    <input
-                      type={showPasswords.new ? 'text' : 'password'}
-                      placeholder="New Password"
-                      value={passwordForm.newPassword}
-                      onChange={(e) => setPasswordForm(prev => ({ ...prev, newPassword: e.target.value }))}
-                      className="w-full px-4 py-3 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPasswords(prev => ({ ...prev, new: !prev.new }))}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
-                    >
-                      {showPasswords.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  
-                  <div className="relative">
-                    <input
-                      type={showPasswords.confirm ? 'text' : 'password'}
-                      placeholder="Confirm New Password"
-                      value={passwordForm.confirmPassword}
-                      onChange={(e) => setPasswordForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                      className="w-full px-4 py-3 pr-10 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500/50"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPasswords(prev => ({ ...prev, confirm: !prev.confirm }))}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
-                    >
-                      {showPasswords.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  
-                  <button
-                    onClick={handleChangePassword}
-                    className="w-full py-3 bg-gradient-to-r from-orange-600 to-red-600 rounded-xl font-semibold hover:from-orange-700 hover:to-red-700 transition-all duration-300"
-                  >
-                    Update Password
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
 
           {/* Sidebar */}
           <div className="space-y-6">
-            {/* Learning Stats */}
+            {/* Learning Stats - Real Data */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
               <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-green-400" />
-                Learning Stats
+                <BookOpen className="w-5 h-5 text-green-400" />
+                Learning Overview
               </h3>
               
               <div className="space-y-4">
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
-                  <div className="flex items-center gap-3">
-                    <BookOpen className="w-5 h-5 text-blue-400" />
-                    <span className="text-gray-300">Enrolled</span>
-                  </div>
+                  <span className="text-gray-300">Enrolled Courses</span>
                   <span className="text-white font-semibold">{stats.coursesEnrolled}</span>
                 </div>
                 
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
-                  <div className="flex items-center gap-3">
-                    <Award className="w-5 h-5 text-green-400" />
-                    <span className="text-gray-300">Completed</span>
-                  </div>
-                  <span className="text-white font-semibold">{stats.coursesCompleted}</span>
+                  <span className="text-gray-300">Completed</span>
+                  <span className="text-green-400 font-semibold">{stats.coursesCompleted}</span>
                 </div>
                 
                 <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
-                  <div className="flex items-center gap-3">
-                    <Clock className="w-5 h-5 text-purple-400" />
-                    <span className="text-gray-300">Total Time</span>
-                  </div>
-                  <span className="text-white font-semibold">{stats.totalLearningTime}</span>
+                  <span className="text-gray-300">In Progress</span>
+                  <span className="text-blue-400 font-semibold">{stats.coursesInProgress}</span>
                 </div>
                 
-                <div className="flex items-center justify-between p-3 rounded-lg bg-white/5">
-                  <div className="flex items-center gap-3">
-                    <TrendingUp className="w-5 h-5 text-orange-400" />
-                    <span className="text-gray-300">Avg Score</span>
+                {stats.coursesEnrolled > 0 && (
+                  <div className="pt-2 border-t border-white/10">
+                    <div className="text-sm text-gray-400 mb-2">Completion Rate</div>
+                    <div className="w-full bg-gray-700 rounded-full h-2">
+                      <div 
+                        className="h-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full transition-all duration-500"
+                        style={{ width: `${(stats.coursesCompleted / stats.coursesEnrolled) * 100}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {Math.round((stats.coursesCompleted / stats.coursesEnrolled) * 100)}%
+                    </div>
                   </div>
-                  <span className="text-white font-semibold">{stats.averageScore}%</span>
-                </div>
+                )}
               </div>
             </div>
 
-            {/* Quick Actions */}
+            {/* Quick Navigation */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-              <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                <Settings className="w-5 h-5 text-cyan-400" />
-                Quick Actions
-              </h3>
+              <h3 className="text-xl font-bold text-white mb-6">Quick Navigation</h3>
               
               <div className="space-y-3">
-                <button className="w-full p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-all duration-300 text-left flex items-center gap-3">
-                  <BookOpen className="w-4 h-4 text-blue-400" />
-                  <span className="text-gray-300">Browse Courses</span>
+                <button 
+                  onClick={() => router.push('/dashboard')}
+                  className="w-full p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-all duration-300 text-left flex items-center justify-between group"
+                >
+                  <span className="text-gray-300 group-hover:text-white">Dashboard</span>
+                  <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-white group-hover:translate-x-1 transition-all" />
                 </button>
                 
-                <button className="w-full p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-all duration-300 text-left flex items-center gap-3">
-                  <Bell className="w-4 h-4 text-yellow-400" />
-                  <span className="text-gray-300">Notifications</span>
+                <button 
+                  onClick={() => router.push('/categories')}
+                  className="w-full p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-all duration-300 text-left flex items-center justify-between group"
+                >
+                  <span className="text-gray-300 group-hover:text-white">Browse Courses</span>
+                  <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-white group-hover:translate-x-1 transition-all" />
                 </button>
                 
-                <button className="w-full p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-all duration-300 text-left flex items-center gap-3">
-                  <Award className="w-4 h-4 text-green-400" />
-                  <span className="text-gray-300">My Certificates</span>
+                <button 
+                  onClick={() => router.push('/my-courses')}
+                  className="w-full p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-all duration-300 text-left flex items-center justify-between group"
+                >
+                  <span className="text-gray-300 group-hover:text-white">My Courses</span>
+                  <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-white group-hover:translate-x-1 transition-all" />
                 </button>
               </div>
             </div>

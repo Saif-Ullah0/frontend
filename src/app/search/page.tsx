@@ -17,9 +17,6 @@ import {
   Heart,
   ArrowRight,
   ChevronRight,
-  Zap,
-  Target,
-  Award,
   X
 } from 'lucide-react';
 
@@ -313,7 +310,7 @@ export default function SearchPage() {
           {loading && (
             <div className="text-center py-16">
               <div className="w-12 h-12 border-3 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-4"></div>
-              <p className="text-gray-400 text-lg">Searching for "{query}"...</p>
+              <p className="text-gray-400 text-lg">Searching for &quot;{query}&quot;...</p>
             </div>
           )}
 
@@ -323,7 +320,7 @@ export default function SearchPage() {
               <div className="flex items-center justify-between mb-8">
                 <div>
                   <h2 className="text-2xl font-bold text-white">
-                    Search Results for "{query}"
+                    Search Results for &quot;{query}&quot;
                   </h2>
                   <p className="text-gray-400 mt-1">
                     {sortedResults.length} {sortedResults.length === 1 ? 'course' : 'courses'} found
@@ -533,7 +530,7 @@ export default function SearchPage() {
                   <Search className="w-20 h-20 text-gray-500 mx-auto mb-6" />
                   <h3 className="text-2xl font-bold text-gray-300 mb-4">No courses found</h3>
                   <p className="text-gray-400 mb-8 max-w-md mx-auto">
-                    We couldn't find any courses matching "{query}". Try different keywords or browse our categories.
+                    We could not find any courses matching &quot;{query}&quot;. Try different keywords or browse our categories.
                   </p>
                   <div className="space-y-4">
                     <button
