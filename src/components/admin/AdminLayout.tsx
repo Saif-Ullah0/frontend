@@ -10,8 +10,9 @@ import {
   FolderIcon, 
   AcademicCapIcon, 
   BookOpenIcon,
+  DocumentIcon,
   ArrowRightOnRectangleIcon,
-    VideoCameraIcon, 
+  VideoCameraIcon, 
   Bars3Icon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
@@ -33,8 +34,8 @@ const navigation = [
   { name: 'Categories', href: '/admin/categories', icon: FolderIcon },
   { name: 'Courses', href: '/admin/courses', icon: AcademicCapIcon },
   { name: 'Modules', href: '/admin/modules', icon: BookOpenIcon },
-    { name: 'Videos', href: '/admin/video-test', icon: VideoCameraIcon }, // Add this line
-
+  { name: 'Notes & PDFs', href: '/admin/notes', icon: DocumentIcon }, // Add this line
+  { name: 'Videos', href: '/admin/video-test', icon: VideoCameraIcon },
 ];
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
@@ -45,16 +46,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname();
 
   useEffect(() => {
-    console.log('🚀 AdminLayout: Component mounted, starting auth check...');
     checkAuth();
   }, []);
 
   const checkAuth = async () => {
-    console.log('🔍 AdminLayout: Starting checkAuth function...');
-    
     try {
-      console.log('🔍 AdminLayout: About to fetch /api/users/me...');
-      
       const response = await fetch('http://localhost:5000/api/me', {
         credentials: 'include',
         headers: {
@@ -62,98 +58,62 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         }
       });
 
-      console.log('🔍 AdminLayout: Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok,
-        url: response.url
-      });
-
       if (!response.ok) {
-        console.log('❌ AdminLayout: Response not ok:', response.status);
-        
         if (response.status === 401) {
-          console.log('❌ AdminLayout: 401 Unauthorized - redirecting to login');
           router.push('/login');
           return;
         }
         if (response.status === 403) {
-          console.log('❌ AdminLayout: 403 Forbidden - redirecting to home');
           router.push('/');
           return;
         }
-        
-        console.log('❌ AdminLayout: Other error - redirecting to login');
         router.push('/login');
         return;
       }
 
-      console.log('🔍 AdminLayout: About to parse JSON...');
       const responseData = await response.json();
-      console.log('🔍 AdminLayout: Raw response data:', responseData);
-      
       const userData = responseData.user || responseData;
-      console.log('🔍 AdminLayout: Extracted user data:', userData);
       
       if (!userData) {
-        console.log('❌ AdminLayout: No user data found - redirecting to login');
         router.push('/login');
         return;
       }
 
       if (userData.role !== 'ADMIN') {
-        console.log('❌ AdminLayout: User is not admin:', userData.role, '- redirecting to home');
         router.push('/');
         return;
       }
 
-      console.log('✅ AdminLayout: Admin authentication successful!');
-      console.log('✅ AdminLayout: Setting user:', userData);
       setUser(userData);
       
     } catch (error: unknown) {
-      console.error('❌ AdminLayout: Auth check failed with error:', error);
-      
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const errorStack = error instanceof Error ? error.stack : 'No stack trace';
-      
-      console.error('❌ AdminLayout: Error details:', {
-        message: errorMessage,
-        stack: errorStack
-      });
+      console.error('Auth check failed:', error);
       router.push('/login');
     } finally {
-      console.log('🔍 AdminLayout: Setting loading to false');
       setLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    console.log('🔍 AdminLayout: Starting logout...');
-    
     try {
-      const response = await fetch('/api/auth/logout', {
+      const response = await fetch('http://localhost:5000/api/auth/logout', {
         method: 'POST',
         credentials: 'include'
       });
       
-      console.log('🔍 AdminLayout: Logout response:', response.status);
       router.push('/login');
     } catch (error) {
-      console.error('❌ AdminLayout: Logout failed:', error);
+      console.error('Logout failed:', error);
     }
   };
 
   if (loading) {
-    console.log('🔍 AdminLayout: Rendering loading state...');
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
       </div>
     );
   }
-
-  console.log('🔍 AdminLayout: Rendering main layout with user:', user);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">

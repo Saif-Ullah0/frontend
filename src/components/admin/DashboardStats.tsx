@@ -45,7 +45,8 @@ export default function DashboardStats({
     },
     {
       name: 'Total Revenue',
-      value: `$${(totalRevenue / 100).toLocaleString()}`,
+      // FIXED: Remove the division by 100
+      value: `$${totalRevenue.toLocaleString()}`,
       icon: CurrencyDollarIcon,
       color: 'from-yellow-500 to-yellow-600',
       bgColor: 'from-yellow-500/20 to-yellow-600/20'
