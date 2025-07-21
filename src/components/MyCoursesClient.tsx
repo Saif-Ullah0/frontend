@@ -2,6 +2,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import CourseMaterialsWidget from '@/components/student/CourseMaterialsWidget';
 import { 
   BookOpen, 
   Play, 
@@ -144,7 +145,7 @@ export default function MyCoursesClient() {
             <BookOpen className="w-12 h-12 text-blue-400" />
           </div>
           <h2 className="text-3xl font-bold text-white mb-4">Start Your Learning Journey</h2>
-          <p className="text-gray-400 mb-8 text-lg">You have not enrolled in any courses yet. Discover amazing courses and start learning today!</p>
+          <p className="text-gray-400 mb-8 text-lg">You haven't enrolled in any courses yet. Discover amazing courses and start learning today!</p>
           <button
             className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-3 mx-auto"
             onClick={() => router.push('/categories')}
@@ -335,6 +336,12 @@ export default function MyCoursesClient() {
                         <span>Enrolled: {formatEnrollmentDate(enrollment.enrolledAt)}</span>
                       </div>
                     )}
+
+                    {/* Course Materials Count */}
+                    <div className="flex items-center justify-between text-xs text-gray-400 mt-1">
+                      <CourseMaterialsWidget courseId={enrollment.course.id} />
+                      <span>Last: {formatLastAccessed(enrollment.lastAccessed)}</span>
+                    </div>
                   </div>
                 </div>
               ) : (
@@ -387,6 +394,11 @@ export default function MyCoursesClient() {
                           <div className="flex items-center justify-between text-xs text-gray-400 mt-1">
                             <span>Last accessed: {formatLastAccessed(enrollment.lastAccessed)}</span>
                             <span>Enrolled: {formatEnrollmentDate(enrollment.enrolledAt)}</span>
+                          </div>
+
+                          {/* Course Materials Count */}
+                          <div className="mt-1">
+                            <CourseMaterialsWidget courseId={enrollment.course.id} />
                           </div>
                         </div>
                         <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-white group-hover:translate-x-1 transition-all duration-300" />

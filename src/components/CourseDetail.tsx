@@ -1,5 +1,6 @@
 // /components/CourseDetail.tsx
 'use client';
+import FastEnrollment from '@/components/FastEnrollment';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -86,9 +87,11 @@ export default function CourseDetail({ course }: CourseDetailProps) {
       name: 'Dr. Sarah Johnson',
       bio: 'Senior Software Engineer with 10+ years of experience in web development and education. Passionate about teaching and helping students achieve their goals.',
       avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
-
+      rating: 4.8,
+      studentsCount: 12456
     },
-
+    rating: course.rating || 4.7,
+    studentsCount: course.studentsCount || 8924,
     duration: course.duration || '24 hours',
     level: course.level || 'Intermediate',
     language: course.language || 'English',
@@ -142,6 +145,7 @@ export default function CourseDetail({ course }: CourseDetailProps) {
     checkEnrollmentStatus();
   }, [course.id]);
 
+  // Handle enrollment (original logic for Stripe redirect)
   const handleEnroll = async () => {
     setLoading(true);
     
@@ -164,7 +168,7 @@ export default function CourseDetail({ course }: CourseDetailProps) {
           toast.error(data.error || 'Enrollment failed');
         }
       } else {
-        // Paid course - redirect to payment
+        // Paid course - redirect to Stripe hosted checkout
         const res = await fetch('http://localhost:5000/api/payment/checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -176,7 +180,7 @@ export default function CourseDetail({ course }: CourseDetailProps) {
 
         if (res.ok) {
           const { url } = await res.json();
-          window.location.href = url;
+          window.location.href = url; // Redirect to Stripe hosted checkout
         } else {
           const data = await res.json();
           toast.error(data.error || 'Failed to create payment session');
@@ -187,6 +191,22 @@ export default function CourseDetail({ course }: CourseDetailProps) {
       toast.error('Something went wrong. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle successful enrollment from FastEnrollment component (for free courses only)
+  const handleEnrollmentSuccess = (result: any) => {
+    // Update enrollment status
+    setIsEnrolled(true);
+    
+    // Show success message
+    toast.success(result.message || 'Enrollment successful! 🎉');
+    
+    // Redirect to course modules
+    if (result.redirectUrl) {
+      window.location.href = result.redirectUrl;
+    } else {
+      router.push(`/courses/${course.id}/modules`);
     }
   };
 
@@ -280,7 +300,11 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                     <p className="text-gray-300 text-lg mb-6">{enhancedCourse.description}</p>
                     
                     <div className="flex items-center gap-6 text-sm text-gray-400">
-                     
+                      <div className="flex items-center gap-1">
+                        <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                        <span>{enhancedCourse.rating}</span>
+                        <span>({enhancedCourse.studentsCount?.toLocaleString()} students)</span>
+                      </div>
                       <div className="flex items-center gap-2">
                         <Clock className="w-4 h-4" />
                         <span>{enhancedCourse.duration}</span>
@@ -296,9 +320,6 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                     </div>
                   </div>
                 </div>
-
-                {/* Instructor Info */}
-                
               </div>
 
               {/* Tab Navigation */}
@@ -332,7 +353,7 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                       <div>
                         <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                           <Target className="w-5 h-5 text-green-400" />
-                          What You will Learn
+                          What You Will Learn
                         </h3>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {enhancedCourse.whatYouWillLearn.map((item, index) => (
@@ -573,36 +594,37 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                     </button>
                   </div>
                 ) : (
-                  <button
-                    onClick={handleEnroll}
-                    disabled={loading}
-                    className={`w-full py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2 ${
-                      enhancedCourse.price === 0
-                        ? 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white'
-                        : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white'
-                    } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {loading ? (
-                      <>
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        Processing...
-                      </>
+                  <div className="space-y-4">
+                    {/* Use FastEnrollment for free courses, original button for paid courses */}
+                    {enhancedCourse.price === 0 ? (
+                      <FastEnrollment 
+                        course={{
+                          id: course.id,
+                          title: course.title,
+                          price: course.price
+                        }}
+                        onSuccess={handleEnrollmentSuccess}
+                      />
                     ) : (
-                      <>
-                        {enhancedCourse.price === 0 ? (
+                      <button
+                        onClick={handleEnroll}
+                        disabled={loading}
+                        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {loading ? (
                           <>
-                            <Zap className="w-5 h-5" />
-                            Enroll for Free
+                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            Processing...
                           </>
                         ) : (
                           <>
                             <Trophy className="w-5 h-5" />
-                            Enroll Now
+                            Enroll Now - ${enhancedCourse.price}
                           </>
                         )}
-                      </>
+                      </button>
                     )}
-                  </button>
+                  </div>
                 )}
 
                 <div className="mt-6 space-y-3 text-center text-sm text-gray-400">

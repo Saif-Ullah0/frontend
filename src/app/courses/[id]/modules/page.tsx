@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import VideoPlayer from '@/components/VideoPlayer';
+import CourseNotes from '@/components/student/CourseNotes';
 import { 
   Lock, 
   CheckCircle2, 
@@ -15,7 +16,8 @@ import {
   PlayCircle,
   Video,
   FileText,
-  X
+  X,
+  DocumentIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -422,6 +424,9 @@ export default function CourseModulesPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Course Notes & Materials */}
+                <CourseNotes courseId={parseInt(id as string)} courseName={course?.title || 'Course'} />
               </div>
 
               {/* Sidebar */}
