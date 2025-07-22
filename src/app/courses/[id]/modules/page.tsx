@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import VideoPlayer from '@/components/VideoPlayer';
 import CourseNotes from '@/components/student/CourseNotes';
+import ModulePurchase from '@/components/ModulePurchase';
 import { 
   Lock, 
   CheckCircle2, 
@@ -17,7 +18,9 @@ import {
   Video,
   FileText,
   X,
-  DocumentIcon
+  DocumentIcon,
+  ShoppingCartIcon,
+  StarIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -36,6 +39,11 @@ type Module = {
   isCompleted?: boolean;
   isLocked?: boolean;
   order?: number;
+  // NEW: Payment fields
+  price?: number;
+  isFree?: boolean;
+  isPublished?: boolean;
+  isOwned?: boolean; // Whether user owns this module
 };
 
 type Course = {
@@ -57,6 +65,10 @@ type ProgressData = {
   completedModules: number[];
 };
 
+type ModuleOwnership = {
+  [moduleId: number]: boolean;
+};
+
 export default function CourseModulesPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -69,6 +81,10 @@ export default function CourseModulesPage() {
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
   const [progressData, setProgressData] = useState<ProgressData | null>(null);
   const [savingProgress, setSavingProgress] = useState(false);
+  // NEW: Module ownership tracking
+  const [moduleOwnership, setModuleOwnership] = useState<ModuleOwnership>({});
+  const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [selectedModuleForPurchase, setSelectedModuleForPurchase] = useState<Module | null>(null);
 
   // Load course and progress data
   useEffect(() => {
@@ -92,11 +108,15 @@ export default function CourseModulesPage() {
               ...module,
               order: index + 1,
               isCompleted: false, // Will be updated from progress data
-              isLocked: false
+              isLocked: false,
+              isOwned: false // Will be updated from ownership data
             }));
 
           setModules(processedModules);
           setCourse(courseData);
+
+          // NEW: Fetch module ownership data
+          await fetchModuleOwnership(processedModules);
 
           // Fetch progress data
           console.log('🔄 Fetching progress data...');
@@ -136,6 +156,45 @@ export default function CourseModulesPage() {
 
     fetchData();
   }, [id]);
+
+  // NEW: Fetch module ownership data
+  const fetchModuleOwnership = async (modulesToCheck: Module[]) => {
+    try {
+      const ownership: ModuleOwnership = {};
+      
+      // Check ownership for each module
+      for (const module of modulesToCheck) {
+        try {
+          const response = await fetch(`http://localhost:5000/api/payment/modules/${module.id}`, {
+            credentials: 'include'
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            ownership[module.id] = data.isOwned || false;
+          } else {
+            ownership[module.id] = false;
+          }
+        } catch (error) {
+          console.warn(`Failed to check ownership for module ${module.id}`);
+          ownership[module.id] = false;
+        }
+      }
+      
+      setModuleOwnership(ownership);
+      
+      // Update modules with ownership info
+      setModules(prev => prev.map(module => ({
+        ...module,
+        isOwned: ownership[module.id] || module.isFree || false,
+        isLocked: !ownership[module.id] && !module.isFree && module.price > 0
+      })));
+      
+      console.log('✅ Module ownership loaded:', ownership);
+    } catch (error) {
+      console.error('❌ Failed to fetch module ownership:', error);
+    }
+  };
 
   const updateModuleProgress = async (moduleId: number, isCompleted: boolean, watchTime?: number, completionPercentage?: number) => {
     setSavingProgress(true);
@@ -192,6 +251,13 @@ export default function CourseModulesPage() {
   };
 
   const handleModuleClick = (module: Module) => {
+    // NEW: Check if module is locked due to payment
+    if (module.isLocked && !module.isOwned) {
+      setSelectedModuleForPurchase(module);
+      setShowPurchaseModal(true);
+      return;
+    }
+    
     if (module.isLocked) return;
     
     setCurrentModule(module);
@@ -201,6 +267,16 @@ export default function CourseModulesPage() {
     } else {
       setShowVideoPlayer(false);
     }
+  };
+
+  // NEW: Handle successful module purchase
+  const handlePurchaseSuccess = async () => {
+    setShowPurchaseModal(false);
+    setSelectedModuleForPurchase(null);
+    
+    // Refresh module ownership
+    await fetchModuleOwnership(modules);
+    toast.success('Module purchased! You can now access the content.');
   };
 
   const handleVideoProgress = (videoId: number, currentTime: number, duration: number, progress: number) => {
@@ -226,9 +302,12 @@ export default function CourseModulesPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // NEW: Calculate pricing stats
   const completedCount = modules.filter(m => m.isCompleted).length;
   const totalModules = modules.length;
   const progressPercentage = progressData?.overallProgress || 0;
+  const ownedModules = modules.filter(m => m.isOwned).length;
+  const paidModules = modules.filter(m => m.price > 0).length;
 
   if (loading) {
     return (
@@ -332,6 +411,22 @@ export default function CourseModulesPage() {
                       ></div>
                     </div>
                   </div>
+
+                  {/* NEW: Module ownership stats */}
+                  {paidModules > 0 && (
+                    <div className="mt-4 p-3 bg-white/5 rounded-xl">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400">Modules Owned</span>
+                        <span className="font-semibold text-white">{ownedModules}/{totalModules}</span>
+                      </div>
+                      <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
+                        <div 
+                          className="h-2 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 transition-all duration-500"
+                          style={{ width: `${(ownedModules / totalModules) * 100}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Module List */}
@@ -359,7 +454,7 @@ export default function CourseModulesPage() {
                           key={module.id}
                           className={`border rounded-xl p-4 transition-all duration-300 cursor-pointer group ${
                             module.isLocked 
-                              ? 'border-gray-600 bg-gray-800/30 cursor-not-allowed' 
+                              ? 'border-orange-500/30 bg-orange-500/5 hover:bg-orange-500/10' 
                               : currentModule?.id === module.id
                               ? 'border-blue-500/50 bg-blue-500/10'
                               : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
@@ -369,8 +464,8 @@ export default function CourseModulesPage() {
                           <div className="flex items-center gap-4">
                             <div className="flex-shrink-0">
                               {module.isLocked ? (
-                                <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center">
-                                  <Lock className="w-5 h-5 text-gray-400" />
+                                <div className="w-10 h-10 bg-orange-500/20 rounded-full flex items-center justify-center">
+                                  <Lock className="w-5 h-5 text-orange-400" />
                                 </div>
                               ) : module.isCompleted ? (
                                 <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
@@ -390,11 +485,27 @@ export default function CourseModulesPage() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between mb-1">
                                 <h4 className={`font-semibold ${
-                                  module.isLocked ? 'text-gray-400' : 'text-white group-hover:text-blue-300'
+                                  module.isLocked ? 'text-orange-300' : 'text-white group-hover:text-blue-300'
                                 } transition-colors`}>
                                   {module.order || index + 1}. {module.title}
                                 </h4>
                                 <div className="flex items-center gap-3 text-sm text-gray-400">
+                                  {/* NEW: Price indicator */}
+                                  {module.price > 0 && !module.isOwned && (
+                                    <span className="px-2 py-1 bg-orange-500/20 text-orange-400 rounded text-xs font-medium">
+                                      ${module.price}
+                                    </span>
+                                  )}
+                                  {module.isFree && (
+                                    <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs font-medium">
+                                      Free
+                                    </span>
+                                  )}
+                                  {module.isOwned && module.price > 0 && (
+                                    <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs font-medium">
+                                      Owned
+                                    </span>
+                                  )}
                                   <span className={`px-2 py-1 rounded text-xs ${
                                     module.type === 'VIDEO' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'
                                   }`}>
@@ -411,10 +522,19 @@ export default function CourseModulesPage() {
                               {module.content && (
                                 <p className="text-gray-400 text-sm line-clamp-2">{module.content}</p>
                               )}
+                              {/* NEW: Lock indicator */}
+                              {module.isLocked && (
+                                <p className="text-orange-400 text-xs mt-1 flex items-center gap-1">
+                                  <ShoppingCartIcon className="w-3 h-3" />
+                                  Click to purchase and unlock this module
+                                </p>
+                              )}
                             </div>
 
                             <div className="flex-shrink-0">
-                              {!module.isLocked && (
+                              {module.isLocked ? (
+                                <ShoppingCartIcon className="w-5 h-5 text-orange-400 group-hover:scale-110 transition-transform" />
+                              ) : (
                                 <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-white group-hover:translate-x-1 transition-all duration-300" />
                               )}
                             </div>
@@ -444,6 +564,12 @@ export default function CourseModulesPage() {
                       <span className="font-semibold text-white">{completedCount}/{totalModules}</span>
                     </div>
                     
+                    {/* NEW: Module ownership */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-300">Modules Owned</span>
+                      <span className="font-semibold text-white">{ownedModules}/{totalModules}</span>
+                    </div>
+                    
                     <div className="flex items-center justify-between">
                       <span className="text-gray-300">Overall Progress</span>
                       <span className="font-semibold text-white">{Math.round(progressPercentage)}%</span>
@@ -468,23 +594,30 @@ export default function CourseModulesPage() {
                   )}
                 </div>
 
-                {/* Quick Navigation */}
+                {/* NEW: Quick Module Actions */}
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                  <h3 className="text-lg font-semibold text-white mb-4">Quick Navigation</h3>
+                  <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
                   
                   <div className="space-y-3">
                     <button 
-                      onClick={() => router.push('/my-courses')}
+                      onClick={() => router.push('/bundles')}
+                      className="w-full p-3 bg-purple-500/20 border border-purple-500/30 rounded-xl hover:bg-purple-500/30 transition-all duration-300 text-left"
+                    >
+                      <span className="text-purple-300">🛍️ Create Module Bundle</span>
+                    </button>
+
+                    <button 
+                      onClick={() => router.push('/my-modules')}
                       className="w-full p-3 bg-blue-500/20 border border-blue-500/30 rounded-xl hover:bg-blue-500/30 transition-all duration-300 text-left"
                     >
-                      <span className="text-blue-300">← Back to My Courses</span>
+                      <span className="text-blue-300">📚 My Purchased Modules</span>
                     </button>
                     
                     <button 
-                      onClick={() => router.push('/dashboard')}
-                      className="w-full p-3 bg-purple-500/20 border border-purple-500/30 rounded-xl hover:bg-purple-500/30 transition-all duration-300 text-left"
+                      onClick={() => router.push('/my-courses')}
+                      className="w-full p-3 bg-green-500/20 border border-green-500/30 rounded-xl hover:bg-green-500/30 transition-all duration-300 text-left"
                     >
-                      <span className="text-purple-300">← Back to Dashboard</span>
+                      <span className="text-green-300">← Back to My Courses</span>
                     </button>
                   </div>
                 </div>
@@ -503,6 +636,42 @@ export default function CourseModulesPage() {
         `}</style>
       </main>
 
+      {/* NEW: Module Purchase Modal */}
+      {showPurchaseModal && selectedModuleForPurchase && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 max-w-md w-full border border-white/20">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white">Purchase Module</h3>
+              <button
+                onClick={() => setShowPurchaseModal(false)}
+                className="p-1 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+            
+            <ModulePurchase
+              module={{
+                id: selectedModuleForPurchase.id,
+                title: selectedModuleForPurchase.title,
+                content: selectedModuleForPurchase.content,
+                price: selectedModuleForPurchase.price || 0,
+                duration: selectedModuleForPurchase.duration,
+                isFree: selectedModuleForPurchase.isFree || false,
+                isPublished: selectedModuleForPurchase.isPublished !== false,
+                course: {
+                  id: parseInt(id as string),
+                  title: course?.title || 'Course'
+                }
+              }}
+              isOwned={false}
+              canPurchase={true}
+              onPurchaseSuccess={handlePurchaseSuccess}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Video Player Modal */}
       {showVideoPlayer && currentModule && currentModule.type === 'VIDEO' && (
         <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4">
@@ -514,6 +683,11 @@ export default function CourseModulesPage() {
                 {currentModule.videoDuration && (
                   <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
                     <span>Duration: {formatDuration(currentModule.videoDuration)}</span>
+                    {currentModule.isOwned && (
+                      <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs">
+                        ✓ Owned
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
