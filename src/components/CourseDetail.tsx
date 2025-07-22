@@ -1,4 +1,4 @@
-// /components/CourseDetail.tsx
+// /components/CourseDetail.tsx - Updated with Module Shop Link
 'use client';
 import FastEnrollment from '@/components/FastEnrollment';
 
@@ -25,7 +25,11 @@ import {
   Shield,
   Infinity,
   Trophy,
-  MessageCircle
+  MessageCircle,
+  ShoppingCartIcon,
+  Lock,
+  DollarSign,
+  Package
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -36,6 +40,10 @@ type Module = {
   duration?: number;
   order: number;
   isPreview?: boolean;
+  // NEW: Payment fields
+  price?: number;
+  isFree?: boolean;
+  isPublished?: boolean;
 };
 
 type Course = {
@@ -71,6 +79,11 @@ type CourseDetailProps = {
   course: Course;
 };
 
+// NEW: Module ownership tracking
+type ModuleOwnership = {
+  [moduleId: number]: boolean;
+};
+
 export default function CourseDetail({ course }: CourseDetailProps) {
   const router = useRouter();
   const [isEnrolled, setIsEnrolled] = useState(false);
@@ -79,6 +92,9 @@ export default function CourseDetail({ course }: CourseDetailProps) {
   const [expandedModule, setExpandedModule] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'curriculum' | 'instructor' | 'reviews'>('overview');
   const [isFavorited, setIsFavorited] = useState(false);
+  // NEW: Module ownership state
+  const [moduleOwnership, setModuleOwnership] = useState<ModuleOwnership>({});
+  const [loadingModuleOwnership, setLoadingModuleOwnership] = useState(true);
 
   // Enhanced course data with mock information
   const enhancedCourse = {
@@ -90,8 +106,8 @@ export default function CourseDetail({ course }: CourseDetailProps) {
       rating: 4.8,
       studentsCount: 12456
     },
-    rating: course.rating || 4.7,
-    studentsCount: course.studentsCount || 8924,
+    //rating: course.rating || 4.7,
+    //studentsCount: course.studentsCount || 8924,
     duration: course.duration || '24 hours',
     level: course.level || 'Intermediate',
     language: course.language || 'English',
@@ -123,6 +139,12 @@ export default function CourseDetail({ course }: CourseDetailProps) {
   const totalModules = enhancedCourse.modules.length;
   const previewModules = enhancedCourse.modules.filter(m => m.isPreview).length;
   const totalDuration = enhancedCourse.modules.reduce((acc, module) => acc + (module.duration || 0), 0);
+  
+  // NEW: Calculate module pricing stats
+  const paidModules = enhancedCourse.modules.filter(m => m.price && m.price > 0);
+  const freeModules = enhancedCourse.modules.filter(m => !m.price || m.price === 0 || m.isFree);
+  const totalModulePrice = paidModules.reduce((sum, m) => sum + (m.price || 0), 0);
+  const ownedModules = Object.values(moduleOwnership).filter(Boolean).length;
 
   useEffect(() => {
     const checkEnrollmentStatus = async () => {
@@ -143,6 +165,42 @@ export default function CourseDetail({ course }: CourseDetailProps) {
     };
 
     checkEnrollmentStatus();
+  }, [course.id]);
+
+  // NEW: Check module ownership
+  useEffect(() => {
+    const fetchModuleOwnership = async () => {
+      try {
+        setLoadingModuleOwnership(true);
+        const ownership: ModuleOwnership = {};
+        
+        // Check ownership for each module
+        for (const module of enhancedCourse.modules) {
+          try {
+            const response = await fetch(`http://localhost:5000/api/payment/modules/${module.id}`, {
+              credentials: 'include'
+            });
+            
+            if (response.ok) {
+              const data = await response.json();
+              ownership[module.id] = data.isOwned || false;
+            } else {
+              ownership[module.id] = false;
+            }
+          } catch (error) {
+            ownership[module.id] = false;
+          }
+        }
+        
+        setModuleOwnership(ownership);
+      } catch (error) {
+        console.error('Failed to fetch module ownership:', error);
+      } finally {
+        setLoadingModuleOwnership(false);
+      }
+    };
+
+    fetchModuleOwnership();
   }, [course.id]);
 
   // Handle enrollment (original logic for Stripe redirect)
@@ -207,6 +265,34 @@ export default function CourseDetail({ course }: CourseDetailProps) {
       window.location.href = result.redirectUrl;
     } else {
       router.push(`/courses/${course.id}/modules`);
+    }
+  };
+
+  // NEW: Handle individual module purchase
+  const handleModulePurchase = async (moduleId: number) => {
+    try {
+      const response = await fetch('http://localhost:5000/api/payment/modules/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moduleId }),
+        credentials: 'include'
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        if (data.checkoutUrl) {
+          window.location.href = data.checkoutUrl;
+        } else if (data.success) {
+          toast.success(data.message);
+          // Refresh ownership
+          setModuleOwnership(prev => ({ ...prev, [moduleId]: true }));
+        }
+      } else {
+        toast.error(data.error || 'Purchase failed');
+      }
+    } catch (error) {
+      toast.error('Something went wrong');
     }
   };
 
@@ -294,12 +380,19 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                       <span className="px-3 py-1 bg-purple-500/20 border border-purple-500/30 rounded-full text-sm text-purple-300 font-medium">
                         {enhancedCourse.category.name}
                       </span>
+                      {/* NEW: Module-wise purchase indicator */}
+                      {paidModules.length > 0 && (
+                        <span className="px-3 py-1 bg-orange-500/20 border border-orange-500/30 rounded-full text-sm text-orange-300 font-medium flex items-center gap-1">
+                          <Package className="w-3 h-3" />
+                          Individual Modules Available
+                        </span>
+                      )}
                     </div>
                     
                     <h1 className="text-3xl font-bold text-white mb-4">{enhancedCourse.title}</h1>
                     <p className="text-gray-300 text-lg mb-6">{enhancedCourse.description}</p>
                     
-                    <div className="flex items-center gap-6 text-sm text-gray-400">
+                    {/* <div className="flex items-center gap-6 text-sm text-gray-400">
                       <div className="flex items-center gap-1">
                         <Star className="w-4 h-4 text-yellow-400 fill-current" />
                         <span>{enhancedCourse.rating}</span>
@@ -317,10 +410,82 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                         <Globe className="w-4 h-4" />
                         <span>{enhancedCourse.language}</span>
                       </div>
-                    </div>
+                    </div> */}
                   </div>
                 </div>
               </div>
+
+              {/* NEW: Module Purchase Options (if course has paid modules) */}
+              {paidModules.length > 0 && (
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                  <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                    <Package className="w-5 h-5 text-orange-400" />
+                    Flexible Learning Options
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Full Course Option */}
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                      <h4 className="font-semibold text-white mb-2 flex items-center gap-2">
+                        <Trophy className="w-5 h-5 text-blue-400" />
+                        Complete Course
+                      </h4>
+                      <div className="text-2xl font-bold text-white mb-2">
+                        {enhancedCourse.price === 0 ? 'Free' : `$${enhancedCourse.price}`}
+                      </div>
+                      <p className="text-gray-400 text-sm mb-4">
+                        Get access to all {totalModules} modules at once
+                      </p>
+                      <div className="text-xs text-green-400">
+                        {enhancedCourse.price > 0 && totalModulePrice > enhancedCourse.price && (
+                          <>💰 Save ${(totalModulePrice - enhancedCourse.price).toFixed(2)} vs individual purchases</>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Individual Modules Option */}
+                    <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+                      <h4 className="font-semibold text-white mb-2 flex items-center gap-2">
+                        <ShoppingCartIcon className="w-5 h-5 text-orange-400" />
+                        Individual Modules
+                      </h4>
+                      <div className="text-2xl font-bold text-white mb-2">
+                        ${paidModules.length > 0 ? Math.min(...paidModules.map(m => m.price || 0)).toFixed(2) : '0'} - ${paidModules.length > 0 ? Math.max(...paidModules.map(m => m.price || 0)).toFixed(2) : '0'}
+                      </div>
+                      <p className="text-gray-400 text-sm mb-4">
+                        Purchase modules one by one as needed
+                      </p>
+                      <div className="text-xs text-orange-400">
+                        🎯 Perfect for targeted learning
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    <button
+                      onClick={() => router.push(`/courses/${course.id}/modules`)}
+                      className="px-4 py-2 bg-blue-500/20 border border-blue-500/30 text-blue-300 rounded-lg hover:bg-blue-500/30 transition-colors text-sm"
+                    >
+                      View All Modules
+                    </button>
+                    {/* NEW: Module Shop Button */}
+                    <button
+                      onClick={() => router.push(`/courses/${course.id}/modules-shop`)}
+                      className="px-4 py-2 bg-orange-500/20 border border-orange-500/30 text-orange-300 rounded-lg hover:bg-orange-500/30 transition-colors text-sm flex items-center gap-2"
+                    >
+                      <ShoppingCartIcon className="w-4 h-4" />
+                      Module Shop
+                    </button>
+                    <button
+                      onClick={() => router.push('/bundles')}
+                      className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 text-purple-300 rounded-lg hover:bg-purple-500/30 transition-colors text-sm"
+                    >
+                      Create Custom Bundle
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Tab Navigation */}
               <div className="bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
@@ -409,53 +574,105 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                       </div>
                       
                       <div className="space-y-3">
-                        {enhancedCourse.modules.map((module, index) => (
-                          <div
-                            key={module.id}
-                            className="bg-white/5 border border-white/10 rounded-xl overflow-hidden"
-                          >
-                            <button
-                              onClick={() => setExpandedModule(expandedModule === module.id ? null : module.id)}
-                              className="w-full p-4 text-left hover:bg-white/10 transition-all duration-300 flex items-center justify-between"
+                        {enhancedCourse.modules.map((module, index) => {
+                          const isOwned = moduleOwnership[module.id] || module.isFree || (module.price || 0) === 0;
+                          const isPaid = (module.price || 0) > 0 && !module.isFree;
+                          
+                          return (
+                            <div
+                              key={module.id}
+                              className="bg-white/5 border border-white/10 rounded-xl overflow-hidden"
                             >
-                              <div className="flex items-center gap-4">
-                                <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-300 font-semibold text-sm">
-                                  {index + 1}
+                              <button
+                                onClick={() => setExpandedModule(expandedModule === module.id ? null : module.id)}
+                                className="w-full p-4 text-left hover:bg-white/10 transition-all duration-300 flex items-center justify-between"
+                              >
+                                <div className="flex items-center gap-4">
+                                  <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-300 font-semibold text-sm">
+                                    {index + 1}
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-3 mb-1">
+                                      <h4 className="font-semibold text-white">{module.title}</h4>
+                                      {/* NEW: Module status indicators */}
+                                      {isPaid && !isOwned && (
+                                        <span className="px-2 py-1 bg-orange-500/20 text-orange-400 rounded text-xs font-medium">
+                                          ${module.price}
+                                        </span>
+                                      )}
+                                      {isOwned && isPaid && (
+                                        <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs font-medium">
+                                          Owned
+                                        </span>
+                                      )}
+                                      {module.isFree && (
+                                        <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs font-medium">
+                                          Free
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-4 text-sm text-gray-400">
+                                      <span>{module.duration || 15} minutes</span>
+                                      {module.isPreview && (
+                                        <span className="px-2 py-1 bg-green-500/20 text-green-300 rounded text-xs">
+                                          Preview
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                                <div>
-                                  <h4 className="font-semibold text-white">{module.title}</h4>
-                                  <div className="flex items-center gap-4 text-sm text-gray-400">
-                                    <span>{module.duration || 15} minutes</span>
+                                <div className="flex items-center gap-2">
+                                  {isPaid && !isOwned && (
+                                    <Lock className="w-4 h-4 text-orange-400" />
+                                  )}
+                                  {expandedModule === module.id ? (
+                                    <ChevronUp className="w-5 h-5 text-gray-400" />
+                                  ) : (
+                                    <ChevronDown className="w-5 h-5 text-gray-400" />
+                                  )}
+                                </div>
+                              </button>
+                              
+                              {expandedModule === module.id && (
+                                <div className="px-4 pb-4 border-t border-white/10 bg-white/5">
+                                  <p className="text-gray-300 text-sm mt-3 mb-4">
+                                    {module.description || `Learn about ${module.title.toLowerCase()} with practical examples and hands-on exercises.`}
+                                  </p>
+                                  
+                                  <div className="flex items-center gap-3">
                                     {module.isPreview && (
-                                      <span className="px-2 py-1 bg-green-500/20 text-green-300 rounded text-xs">
-                                        Preview
-                                      </span>
+                                      <button className="px-4 py-2 bg-green-500/20 border border-green-500/30 text-green-300 rounded-lg text-sm hover:bg-green-500/30 transition-colors">
+                                        <Play className="w-4 h-4 inline mr-2" />
+                                        Watch Preview
+                                      </button>
+                                    )}
+                                    
+                                    {/* NEW: Individual module purchase */}
+                                    {isPaid && !isOwned && !loadingModuleOwnership && (
+                                      <button
+                                        onClick={() => handleModulePurchase(module.id)}
+                                        className="px-4 py-2 bg-orange-500/20 border border-orange-500/30 text-orange-300 rounded-lg text-sm hover:bg-orange-500/30 transition-colors flex items-center gap-2"
+                                      >
+                                        <ShoppingCartIcon className="w-4 h-4" />
+                                        Buy Module - ${module.price}
+                                      </button>
+                                    )}
+                                    
+                                    {isOwned && (
+                                      <button
+                                        onClick={() => router.push(`/courses/${course.id}/modules/${module.id}`)}
+                                        className="px-4 py-2 bg-blue-500/20 border border-blue-500/30 text-blue-300 rounded-lg text-sm hover:bg-blue-500/30 transition-colors flex items-center gap-2"
+                                      >
+                                        <Play className="w-4 h-4" />
+                                        Access Module
+                                      </button>
                                     )}
                                   </div>
                                 </div>
-                              </div>
-                              {expandedModule === module.id ? (
-                                <ChevronUp className="w-5 h-5 text-gray-400" />
-                              ) : (
-                                <ChevronDown className="w-5 h-5 text-gray-400" />
                               )}
-                            </button>
-                            
-                            {expandedModule === module.id && (
-                              <div className="px-4 pb-4 border-t border-white/10 bg-white/5">
-                                <p className="text-gray-300 text-sm mt-3">
-                                  {module.description || `Learn about ${module.title.toLowerCase()} with practical examples and hands-on exercises.`}
-                                </p>
-                                {module.isPreview && (
-                                  <button className="mt-3 px-4 py-2 bg-green-500/20 border border-green-500/30 text-green-300 rounded-lg text-sm hover:bg-green-500/30 transition-colors">
-                                    <Play className="w-4 h-4 inline mr-2" />
-                                    Watch Preview
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -568,10 +785,19 @@ export default function CourseDetail({ course }: CourseDetailProps) {
 
                 <div className="text-center mb-6">
                   <div className="text-4xl font-bold text-white mb-2">
-                    {enhancedCourse.price === 0 ? 'Free' : `$${enhancedCourse.price}`}
+                    {enhancedCourse.price === 0 ? 'Free' : `${enhancedCourse.price}`}
                   </div>
                   {enhancedCourse.price > 0 && (
                     <p className="text-gray-400 text-sm">One-time payment • Lifetime access</p>
+                  )}
+                  
+                  {/* NEW: Module pricing comparison */}
+                  {paidModules.length > 0 && totalModulePrice > enhancedCourse.price && (
+                    <div className="mt-2 p-2 bg-green-500/20 border border-green-500/30 rounded-lg">
+                      <p className="text-green-400 text-xs font-medium">
+                        💰 Save ${(totalModulePrice - enhancedCourse.price).toFixed(2)} vs buying modules individually
+                      </p>
+                    </div>
                   )}
                 </div>
 
@@ -624,6 +850,37 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                         )}
                       </button>
                     )}
+
+                    {/* NEW: Alternative purchase options */}
+                    {paidModules.length > 0 && (
+                      <div className="pt-4 border-t border-white/10">
+                        <p className="text-sm text-gray-400 text-center mb-3">Or purchase modules individually:</p>
+                        <div className="space-y-2">
+                          {/* NEW: Module Shop Button - Main Call to Action */}
+                          <button
+                            onClick={() => router.push(`/courses/${course.id}/modules-shop`)}
+                            className="w-full py-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
+                          >
+                            <ShoppingCartIcon className="w-5 h-5" />
+                            🛒 Shop Modules
+                          </button>
+                          <button
+                            onClick={() => router.push(`/courses/${course.id}/modules`)}
+                            className="w-full py-3 bg-blue-500/20 border border-blue-500/30 text-blue-300 rounded-lg hover:bg-blue-500/30 transition-colors text-sm flex items-center justify-center gap-2"
+                          >
+                            <BookOpen className="w-4 h-4" />
+                            Browse All Modules
+                          </button>
+                          <button
+                            onClick={() => router.push('/bundles')}
+                            className="w-full py-3 bg-purple-500/20 border border-purple-500/30 text-purple-300 rounded-lg hover:bg-purple-500/30 transition-colors text-sm flex items-center justify-center gap-2"
+                          >
+                            <Package className="w-4 h-4" />
+                            Create Custom Bundle
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -663,6 +920,25 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                     <span className="text-gray-400">Modules</span>
                     <span className="text-white font-semibold">{totalModules}</span>
                   </div>
+                  {/* NEW: Module breakdown */}
+                  {paidModules.length > 0 && (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400">Free Modules</span>
+                        <span className="text-green-400 font-semibold">{freeModules.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400">Paid Modules</span>
+                        <span className="text-orange-400 font-semibold">{paidModules.length}</span>
+                      </div>
+                      {!loadingModuleOwnership && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-400">Modules Owned</span>
+                          <span className="text-blue-400 font-semibold">{ownedModules}/{totalModules}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400">Language</span>
                     <span className="text-white font-semibold">{enhancedCourse.language}</span>
@@ -673,6 +949,44 @@ export default function CourseDetail({ course }: CourseDetailProps) {
                   </div>
                 </div>
               </div>
+
+              {/* NEW: Module Purchase Summary */}
+              {paidModules.length > 0 && (
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-green-400" />
+                    Pricing Breakdown
+                  </h3>
+                  <div className="space-y-3 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">Complete Course</span>
+                      <span className="text-white font-semibold">
+                        {enhancedCourse.price === 0 ? 'Free' : `${enhancedCourse.price}`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">All Modules Individually</span>
+                      <span className="text-orange-400 font-semibold">${totalModulePrice.toFixed(2)}</span>
+                    </div>
+                    {enhancedCourse.price > 0 && totalModulePrice > enhancedCourse.price && (
+                      <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                        <span className="text-green-400">Course Savings</span>
+                        <span className="text-green-400 font-semibold">${(totalModulePrice - enhancedCourse.price).toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* NEW: Quick Action Button */}
+                  <div className="mt-4">
+                    <button
+                      onClick={() => router.push(`/courses/${course.id}/modules-shop`)}
+                      className="w-full py-2 bg-orange-500/20 border border-orange-500/30 text-orange-300 rounded-lg hover:bg-orange-500/30 transition-colors text-sm font-medium"
+                    >
+                      🛒 Start Shopping Modules
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
