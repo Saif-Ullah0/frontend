@@ -1,18 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize, RotateCw } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, RotateCw, CheckCircle } from 'lucide-react';
 
 interface VideoPlayerProps {
   videoId: number;
+  chapterId?: string; // 🆕 NEW: For chapter-based progress
   title: string;
   thumbnailUrl?: string;
   onProgress?: (videoId: number, currentTime: number, duration: number, progress: number) => void;
+  onChapterProgress?: (chapterId: string, progress: number, isCompleted: boolean) => void; // 🆕 NEW
 }
 
 const VideoPlayer: React.FC<VideoPlayerProps> = ({ 
   videoId, 
+  chapterId,
   title, 
   thumbnailUrl, 
-  onProgress 
+  onProgress,
+  onChapterProgress
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -26,6 +30,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [playbackRate, setPlaybackRate] = useState(1);
+  
+  // 🆕 NEW: Auto-completion states
+  const [isCompleted, setIsCompleted] = useState(false);
+  const [showCompletionMessage, setShowCompletionMessage] = useState(false);
 
   // Video stream URL
   const videoUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/videos/stream/${videoId}`;
@@ -42,16 +50,46 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const handleTimeUpdate = () => {
       setCurrentTime(video.currentTime);
       
-      // Call progress callback for tracking
+      const progress = video.duration > 0 ? (video.currentTime / video.duration) * 100 : 0;
+      
+      // 🆕 NEW: Auto-completion at 90%
+      if (progress >= 90 && !isCompleted) {
+        setIsCompleted(true);
+        setShowCompletionMessage(true);
+        
+        // Auto-hide completion message after 3 seconds
+        setTimeout(() => setShowCompletionMessage(false), 3000);
+        
+        // Update chapter progress if chapter-based
+        if (chapterId && onChapterProgress) {
+          onChapterProgress(chapterId, progress, true);
+        }
+        
+        console.log('🎉 Video auto-completed at 90%');
+      }
+      
+      // Call original progress callback
       if (onProgress && video.duration > 0) {
-        const progress = (video.currentTime / video.duration) * 100;
         onProgress(videoId, video.currentTime, video.duration, progress);
+      }
+      
+      // Update chapter progress for any progress change
+      if (chapterId && onChapterProgress && !isCompleted) {
+        onChapterProgress(chapterId, progress, false);
       }
     };
 
     const handleEnded = () => {
       setIsPlaying(false);
       setCurrentTime(0);
+      
+      // 🆕 NEW: Mark as completed when video actually ends
+      if (!isCompleted) {
+        setIsCompleted(true);
+        if (chapterId && onChapterProgress) {
+          onChapterProgress(chapterId, 100, true);
+        }
+      }
     };
 
     const handleError = () => {
@@ -76,7 +114,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       video.removeEventListener('error', handleError);
       video.removeEventListener('canplay', handleCanPlay);
     };
-  }, [videoId, onProgress]);
+  }, [videoId, chapterId, onProgress, onChapterProgress, isCompleted]);
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -196,6 +234,19 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         Your browser does not support the video tag.
       </video>
 
+      {/* 🆕 NEW: Completion Message Overlay */}
+      {showCompletionMessage && (
+        <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-green-600 text-white px-6 py-4 rounded-lg flex items-center gap-3 animate-pulse">
+            <CheckCircle className="w-6 h-6" />
+            <div>
+              <div className="font-semibold">Chapter Completed!</div>
+              <div className="text-sm opacity-90">Great job! You've finished this video.</div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Loading Overlay */}
       {isLoading && (
         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
@@ -218,6 +269,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
 
+      {/* 🆕 NEW: Completion Badge */}
+      {isCompleted && (
+        <div className="absolute top-4 right-4 bg-green-600 text-white px-3 py-1 rounded-full flex items-center gap-2 text-sm">
+          <CheckCircle className="w-4 h-4" />
+          Completed
+        </div>
+      )}
+
       {/* Controls */}
       <div 
         className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black via-black/80 to-transparent p-4 transition-opacity duration-300 ${
@@ -232,7 +291,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             onClick={handleProgressClick}
           >
             <div
-              className="h-full bg-blue-500 rounded-full transition-all duration-100"
+              className={`h-full rounded-full transition-all duration-100 ${
+                isCompleted ? 'bg-green-500' : 'bg-blue-500'
+              }`}
               style={{ width: `${progressPercentage}%` }}
             />
           </div>
@@ -272,6 +333,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <div className="text-white text-sm">
               {formatTime(currentTime)} / {formatTime(duration)}
             </div>
+
+            {/* 🆕 NEW: Completion Status */}
+            {isCompleted && (
+              <div className="flex items-center gap-2 text-green-400 text-sm">
+                <CheckCircle className="w-4 h-4" />
+                <span>Completed</span>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center space-x-4">

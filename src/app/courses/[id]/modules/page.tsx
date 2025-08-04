@@ -16,11 +16,11 @@ import {
   ChevronRight,
   PlayCircle,
   Video,
-  FileText,
   X,
-  DocumentIcon,
   ShoppingCartIcon,
-  StarIcon
+  Play,
+  Pause,
+  RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -39,11 +39,14 @@ type Module = {
   isCompleted?: boolean;
   isLocked?: boolean;
   order?: number;
-  // NEW: Payment fields
+  // Payment fields
   price?: number;
   isFree?: boolean;
   isPublished?: boolean;
-  isOwned?: boolean; // Whether user owns this module
+  isOwned?: boolean;
+  // NEW: Progress tracking
+  watchTime?: number;
+  completionPercentage?: number;
 };
 
 type Course = {
@@ -81,7 +84,6 @@ export default function CourseModulesPage() {
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
   const [progressData, setProgressData] = useState<ProgressData | null>(null);
   const [savingProgress, setSavingProgress] = useState(false);
-  // NEW: Module ownership tracking
   const [moduleOwnership, setModuleOwnership] = useState<ModuleOwnership>({});
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [selectedModuleForPurchase, setSelectedModuleForPurchase] = useState<Module | null>(null);
@@ -101,46 +103,35 @@ export default function CourseModulesPage() {
           const courseData = await courseRes.json();
           console.log('✅ Course data loaded:', courseData.title);
           
-          // Process modules
-          const processedModules = (courseData.modules || [])
+          // 🆕 FILTER: Only process VIDEO modules with chapters
+          const videoModules = (courseData.modules || [])
+            .filter((module: any) => {
+              // Only include modules that have video chapters
+              const hasVideoChapters = module.chapters?.some((chapter: any) => 
+                chapter.type === 'VIDEO' && chapter.videoUrl
+              );
+              return hasVideoChapters;
+            })
             .sort((a: Module, b: Module) => a.orderIndex - b.orderIndex)
             .map((module: Module, index: number) => ({
               ...module,
               order: index + 1,
-              isCompleted: false, // Will be updated from progress data
+              isCompleted: false,
               isLocked: false,
-              isOwned: false // Will be updated from ownership data
+              isOwned: false,
+              type: 'VIDEO' as const, // Force all to be VIDEO since we filtered
+              // Get video data from first video chapter
+              videoUrl: module.chapters?.[0]?.videoUrl,
+              videoDuration: module.chapters?.[0]?.videoDuration,
+              thumbnailUrl: module.chapters?.[0]?.thumbnailUrl,
             }));
 
-          setModules(processedModules);
+          setModules(videoModules);
           setCourse(courseData);
 
-          // NEW: Fetch module ownership data
-          await fetchModuleOwnership(processedModules);
-
-          // Fetch progress data
-          console.log('🔄 Fetching progress data...');
-          const progressRes = await fetch(`http://localhost:5000/api/progress/course/${id}`, {
-            credentials: 'include'
-          });
-
-          if (progressRes.ok) {
-            const progress = await progressRes.json();
-            console.log('✅ Progress data loaded:', progress);
-            setProgressData(progress);
-            
-            // Update modules with completion status
-            const updatedModules = processedModules.map((module: Module) => ({
-              ...module,
-              isCompleted: progress.completedModules.includes(module.id)
-            }));
-            
-            setModules(updatedModules);
-            console.log(`📊 Completed modules: ${progress.completedModules.length}`);
-          } else {
-            console.warn('⚠️ Could not fetch progress data');
-            // Still proceed without progress data
-          }
+          // Fetch ownership and progress
+          await fetchModuleOwnership(videoModules);
+          await fetchProgressData(videoModules);
           
         } else {
           console.error('❌ Failed to fetch course:', courseRes.status);
@@ -157,12 +148,11 @@ export default function CourseModulesPage() {
     fetchData();
   }, [id]);
 
-  // NEW: Fetch module ownership data
+  // Fetch module ownership data
   const fetchModuleOwnership = async (modulesToCheck: Module[]) => {
     try {
       const ownership: ModuleOwnership = {};
       
-      // Check ownership for each module
       for (const module of modulesToCheck) {
         try {
           const response = await fetch(`http://localhost:5000/api/payment/modules/${module.id}`, {
@@ -196,9 +186,43 @@ export default function CourseModulesPage() {
     }
   };
 
+  // 🆕 NEW: Enhanced progress data fetching
+  const fetchProgressData = async (modulesToCheck: Module[]) => {
+    try {
+      console.log('🔄 Fetching progress data...');
+      const progressRes = await fetch(`http://localhost:5000/api/progress/course/${id}`, {
+        credentials: 'include'
+      });
+
+      if (progressRes.ok) {
+        const progress = await progressRes.json();
+        console.log('✅ Progress data loaded:', progress);
+        setProgressData(progress);
+        
+        // Update modules with completion status and progress
+        setModules(prev => prev.map(module => {
+          const moduleProgress = progress.moduleProgress?.find((mp: any) => mp.moduleId === module.id);
+          return {
+            ...module,
+            isCompleted: progress.completedModules.includes(module.id),
+            watchTime: moduleProgress?.watchTime || 0,
+            completionPercentage: moduleProgress?.completionPercentage || 0,
+          };
+        }));
+        
+        console.log(`📊 Completed modules: ${progress.completedModules.length}`);
+      } else {
+        console.warn('⚠️ Could not fetch progress data');
+      }
+    } catch (error) {
+      console.error('❌ Failed to fetch progress data:', error);
+    }
+  };
+
+  // 🆕 ENHANCED: Auto-save progress with better logic
   const updateModuleProgress = async (moduleId: number, isCompleted: boolean, watchTime?: number, completionPercentage?: number) => {
     setSavingProgress(true);
-    console.log(`💾 Saving progress for module ${moduleId}...`);
+    console.log(`💾 Auto-saving progress for module ${moduleId}...`);
     
     try {
       const response = await fetch('http://localhost:5000/api/progress/module', {
@@ -216,11 +240,16 @@ export default function CourseModulesPage() {
 
       if (response.ok) {
         const result = await response.json();
-        console.log('✅ Progress saved successfully:', result);
+        console.log('✅ Progress auto-saved:', result);
         
         // Update local state
         setModules(prev => prev.map(m => 
-          m.id === moduleId ? { ...m, isCompleted } : m
+          m.id === moduleId ? { 
+            ...m, 
+            isCompleted,
+            watchTime: watchTime || m.watchTime,
+            completionPercentage: completionPercentage || m.completionPercentage
+          } : m
         ));
 
         // Update progress data
@@ -234,8 +263,9 @@ export default function CourseModulesPage() {
           } : null);
         }
 
-        if (isCompleted) {
-          toast.success('Module completed! Progress saved 🎉');
+        // 🆕 NEW: Show completion message only on first completion
+        if (isCompleted && !modules.find(m => m.id === moduleId)?.isCompleted) {
+          toast.success('🎉 Video completed automatically! Great progress!');
         }
       } else {
         const errorText = await response.text();
@@ -251,7 +281,7 @@ export default function CourseModulesPage() {
   };
 
   const handleModuleClick = (module: Module) => {
-    // NEW: Check if module is locked due to payment
+    // Check if module is locked due to payment
     if (module.isLocked && !module.isOwned) {
       setSelectedModuleForPurchase(module);
       setShowPurchaseModal(true);
@@ -261,37 +291,35 @@ export default function CourseModulesPage() {
     if (module.isLocked) return;
     
     setCurrentModule(module);
-    
-    if (module.type === 'VIDEO') {
-      setShowVideoPlayer(true);
-    } else {
-      setShowVideoPlayer(false);
-    }
+    setShowVideoPlayer(true); // All modules are now videos
   };
 
-  // NEW: Handle successful module purchase
+  // Handle successful module purchase
   const handlePurchaseSuccess = async () => {
     setShowPurchaseModal(false);
     setSelectedModuleForPurchase(null);
     
     // Refresh module ownership
     await fetchModuleOwnership(modules);
-    toast.success('Module purchased! You can now access the content.');
+    toast.success('Module purchased! You can now watch the video.');
   };
 
+  // 🆕 ENHANCED: Better video progress handling
   const handleVideoProgress = (videoId: number, currentTime: number, duration: number, progress: number) => {
-    // Auto-mark as completed when 90% watched
-    if (progress > 90 && !modules.find(m => m.id === videoId)?.isCompleted) {
-      console.log(`🎥 Video ${videoId} reached 90%, auto-completing...`);
-      updateModuleProgress(videoId, true, currentTime, progress);
-    }
-  };
-
-  const handleModuleComplete = (moduleId: number) => {
-    const module = modules.find(m => m.id === moduleId);
-    if (module && !module.isCompleted) {
-      console.log(`✅ Manually completing module ${moduleId}...`);
-      updateModuleProgress(moduleId, true);
+    // Auto-complete when 90% watched (no manual button needed)
+    if (progress >= 90) {
+      const module = modules.find(m => m.id === videoId);
+      if (module && !module.isCompleted) {
+        console.log(`🎥 Video ${videoId} reached ${Math.round(progress)}%, auto-completing...`);
+        updateModuleProgress(videoId, true, currentTime, progress);
+      }
+    } else {
+      // Save progress every 10% increment
+      const roundedProgress = Math.floor(progress / 10) * 10;
+      const module = modules.find(m => m.id === videoId);
+      if (module && roundedProgress > (module.completionPercentage || 0)) {
+        updateModuleProgress(videoId, false, currentTime, progress);
+      }
     }
   };
 
@@ -302,7 +330,20 @@ export default function CourseModulesPage() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // NEW: Calculate pricing stats
+  // 🆕 NEW: Get video status for better UX
+  const getVideoStatus = (module: Module) => {
+    if (module.isCompleted) return { label: 'COMPLETED', color: 'green', icon: CheckCircle2 };
+    if ((module.completionPercentage || 0) > 0) {
+      return { 
+        label: `${Math.round(module.completionPercentage || 0)}% WATCHED`, 
+        color: 'blue', 
+        icon: Play 
+      };
+    }
+    return { label: 'NOT STARTED', color: 'gray', icon: PlayCircle };
+  };
+
+  // Calculate stats
   const completedCount = modules.filter(m => m.isCompleted).length;
   const totalModules = modules.length;
   const progressPercentage = progressData?.overallProgress || 0;
@@ -314,7 +355,7 @@ export default function CourseModulesPage() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] text-white">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
-          <span className="text-xl">Loading course content...</span>
+          <span className="text-xl">Loading video content...</span>
         </div>
       </div>
     );
@@ -330,7 +371,7 @@ export default function CourseModulesPage() {
             <Lock className="w-12 h-12 text-red-400" />
           </div>
           <h2 className="text-3xl font-bold mb-4 text-red-400">Access Restricted</h2>
-          <p className="text-lg text-gray-300 mb-8">You need to be enrolled in this course to access the learning materials.</p>
+          <p className="text-lg text-gray-300 mb-8">You need to be enrolled in this course to access the video content.</p>
           <div className="space-y-4">
             <button
               onClick={() => router.push(`/courses/${id}`)}
@@ -370,12 +411,12 @@ export default function CourseModulesPage() {
                 </button>
                 <div className="flex-1">
                   <h1 className="text-xl font-semibold text-white truncate">{course?.title}</h1>
-                  <p className="text-gray-400 text-sm">{course?.category?.name}</p>
+                  <p className="text-gray-400 text-sm">{course?.category?.name} • {totalModules} videos</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">
                     <div className="text-sm font-semibold text-white">{Math.round(progressPercentage)}% Complete</div>
-                    <div className="text-xs text-gray-400">{completedCount} of {totalModules} modules</div>
+                    <div className="text-xs text-gray-400">{completedCount} of {totalModules} videos</div>
                   </div>
                   {savingProgress && (
                     <div className="w-5 h-5 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin"></div>
@@ -401,7 +442,7 @@ export default function CourseModulesPage() {
                   {/* Progress Bar */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Course Progress</span>
+                      <span className="text-gray-400">Video Course Progress</span>
                       <span className="font-semibold text-white">{Math.round(progressPercentage)}%</span>
                     </div>
                     <div className="w-full bg-gray-700 rounded-full h-3">
@@ -412,11 +453,11 @@ export default function CourseModulesPage() {
                     </div>
                   </div>
 
-                  {/* NEW: Module ownership stats */}
+                  {/* Module ownership stats */}
                   {paidModules > 0 && (
                     <div className="mt-4 p-3 bg-white/5 rounded-xl">
                       <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-400">Modules Owned</span>
+                        <span className="text-gray-400">Videos Owned</span>
                         <span className="font-semibold text-white">{ownedModules}/{totalModules}</span>
                       </div>
                       <div className="w-full bg-gray-700 rounded-full h-2 mt-2">
@@ -429,118 +470,155 @@ export default function CourseModulesPage() {
                   )}
                 </div>
 
-                {/* Module List */}
+                {/* 🆕 REVAMPED: Video-Only Course Content */}
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                      <PlayCircle className="w-6 h-6 text-blue-400" />
-                      Course Content
+                      <Video className="w-6 h-6 text-red-400" />
+                      Video Course Content
                     </h3>
                     <div className="text-sm text-gray-400">
-                      {completedCount} / {totalModules} completed
+                      {completedCount} / {totalModules} videos completed
                     </div>
                   </div>
 
                   {modules.length === 0 ? (
                     <div className="text-center py-12">
-                      <BookOpen className="w-16 h-16 text-gray-500 mx-auto mb-4" />
-                      <h4 className="text-lg font-semibold text-gray-300 mb-2">No modules available</h4>
-                      <p className="text-gray-400">This course content is being prepared.</p>
+                      <Video className="w-16 h-16 text-gray-500 mx-auto mb-4" />
+                      <h4 className="text-lg font-semibold text-gray-300 mb-2">No video content available</h4>
+                      <p className="text-gray-400">Video lessons are being prepared for this course.</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {modules.map((module, index) => (
-                        <div
-                          key={module.id}
-                          className={`border rounded-xl p-4 transition-all duration-300 cursor-pointer group ${
-                            module.isLocked 
-                              ? 'border-orange-500/30 bg-orange-500/5 hover:bg-orange-500/10' 
-                              : currentModule?.id === module.id
-                              ? 'border-blue-500/50 bg-blue-500/10'
-                              : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
-                          }`}
-                          onClick={() => handleModuleClick(module)}
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="flex-shrink-0">
-                              {module.isLocked ? (
-                                <div className="w-10 h-10 bg-orange-500/20 rounded-full flex items-center justify-center">
-                                  <Lock className="w-5 h-5 text-orange-400" />
-                                </div>
-                              ) : module.isCompleted ? (
-                                <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
-                                  <CheckCircle2 className="w-5 h-5 text-green-400" />
-                                </div>
-                              ) : module.type === 'VIDEO' ? (
-                                <div className="w-10 h-10 bg-red-500/20 rounded-full flex items-center justify-center group-hover:bg-red-500/30 transition-colors">
-                                  <Video className="w-5 h-5 text-red-400" />
-                                </div>
-                              ) : (
-                                <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center group-hover:bg-blue-500/30 transition-colors">
-                                  <FileText className="w-5 h-5 text-blue-400" />
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-1">
-                                <h4 className={`font-semibold ${
-                                  module.isLocked ? 'text-orange-300' : 'text-white group-hover:text-blue-300'
-                                } transition-colors`}>
-                                  {module.order || index + 1}. {module.title}
-                                </h4>
-                                <div className="flex items-center gap-3 text-sm text-gray-400">
-                                  {/* NEW: Price indicator */}
-                                  {module.price > 0 && !module.isOwned && (
-                                    <span className="px-2 py-1 bg-orange-500/20 text-orange-400 rounded text-xs font-medium">
-                                      ${module.price}
-                                    </span>
-                                  )}
-                                  {module.isFree && (
-                                    <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs font-medium">
-                                      Free
-                                    </span>
-                                  )}
-                                  {module.isOwned && module.price > 0 && (
-                                    <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs font-medium">
-                                      Owned
-                                    </span>
-                                  )}
-                                  <span className={`px-2 py-1 rounded text-xs ${
-                                    module.type === 'VIDEO' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'
+                      {modules.map((module, index) => {
+                        const status = getVideoStatus(module);
+                        const StatusIcon = status.icon;
+                        
+                        return (
+                          <div
+                            key={module.id}
+                            className={`border rounded-xl p-4 transition-all duration-300 cursor-pointer group ${
+                              module.isLocked 
+                                ? 'border-orange-500/30 bg-orange-500/5 hover:bg-orange-500/10' 
+                                : currentModule?.id === module.id
+                                ? 'border-blue-500/50 bg-blue-500/10'
+                                : 'border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/20'
+                            }`}
+                            onClick={() => handleModuleClick(module)}
+                          >
+                            <div className="flex items-center gap-4">
+                              {/* Video Thumbnail */}
+                              <div className="flex-shrink-0 relative">
+                                {module.thumbnailUrl ? (
+                                  <div className="w-16 h-12 rounded-lg overflow-hidden bg-gray-800">
+                                    <img 
+                                      src={module.thumbnailUrl} 
+                                      alt={module.title}
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                      {module.isLocked ? (
+                                        <Lock className="w-6 h-6 text-white/80" />
+                                      ) : (
+                                        <StatusIcon className={`w-6 h-6 text-white/80`} />
+                                      )}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className={`w-16 h-12 rounded-lg flex items-center justify-center ${
+                                    module.isLocked 
+                                      ? 'bg-orange-500/20' 
+                                      : status.color === 'green' 
+                                      ? 'bg-green-500/20' 
+                                      : status.color === 'blue'
+                                      ? 'bg-blue-500/20'
+                                      : 'bg-gray-500/20'
                                   }`}>
-                                    {module.type}
-                                  </span>
-                                  {module.type === 'VIDEO' && module.videoDuration && (
-                                    <span className="flex items-center gap-1">
-                                      <Clock className="w-4 h-4" />
-                                      {formatDuration(module.videoDuration)}
-                                    </span>
-                                  )}
-                                </div>
+                                    {module.isLocked ? (
+                                      <Lock className="w-6 h-6 text-orange-400" />
+                                    ) : (
+                                      <StatusIcon className={`w-6 h-6 ${
+                                        status.color === 'green' ? 'text-green-400' :
+                                        status.color === 'blue' ? 'text-blue-400' : 'text-gray-400'
+                                      }`} />
+                                    )}
+                                  </div>
+                                )}
                               </div>
-                              {module.content && (
-                                <p className="text-gray-400 text-sm line-clamp-2">{module.content}</p>
-                              )}
-                              {/* NEW: Lock indicator */}
-                              {module.isLocked && (
-                                <p className="text-orange-400 text-xs mt-1 flex items-center gap-1">
-                                  <ShoppingCartIcon className="w-3 h-3" />
-                                  Click to purchase and unlock this module
-                                </p>
-                              )}
-                            </div>
 
-                            <div className="flex-shrink-0">
-                              {module.isLocked ? (
-                                <ShoppingCartIcon className="w-5 h-5 text-orange-400 group-hover:scale-110 transition-transform" />
-                              ) : (
-                                <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-white group-hover:translate-x-1 transition-all duration-300" />
-                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between mb-1">
+                                  <h4 className={`font-semibold ${
+                                    module.isLocked ? 'text-orange-300' : 'text-white group-hover:text-blue-300'
+                                  } transition-colors`}>
+                                    {module.order || index + 1}. {module.title}
+                                  </h4>
+                                  <div className="flex items-center gap-3 text-sm">
+                                    {/* Progress/Status Badge */}
+                                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                      status.color === 'green' ? 'bg-green-500/20 text-green-400' :
+                                      status.color === 'blue' ? 'bg-blue-500/20 text-blue-400' :
+                                      'bg-gray-500/20 text-gray-400'
+                                    }`}>
+                                      {status.label}
+                                    </span>
+                                    
+                                    {/* Price/Ownership */}
+                                    {module.price > 0 && !module.isOwned && (
+                                      <span className="px-2 py-1 bg-orange-500/20 text-orange-400 rounded text-xs font-medium">
+                                        ${module.price}
+                                      </span>
+                                    )}
+                                    {module.isFree && (
+                                      <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs font-medium">
+                                        Free
+                                      </span>
+                                    )}
+                                    
+                                    {/* Duration */}
+                                    {module.videoDuration && (
+                                      <span className="flex items-center gap-1 text-gray-400">
+                                        <Clock className="w-4 h-4" />
+                                        {formatDuration(module.videoDuration)}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                {/* Progress Bar for Partially Watched */}
+                                {(module.completionPercentage || 0) > 0 && !module.isCompleted && (
+                                  <div className="w-full bg-gray-700 rounded-full h-1 mb-2">
+                                    <div 
+                                      className="h-1 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
+                                      style={{ width: `${module.completionPercentage}%` }}
+                                    ></div>
+                                  </div>
+                                )}
+                                
+                                {module.content && (
+                                  <p className="text-gray-400 text-sm line-clamp-1">{module.content}</p>
+                                )}
+                                
+                                {/* Lock indicator */}
+                                {module.isLocked && (
+                                  <p className="text-orange-400 text-xs mt-1 flex items-center gap-1">
+                                    <ShoppingCartIcon className="w-3 h-3" />
+                                    Click to purchase and unlock this video
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="flex-shrink-0">
+                                {module.isLocked ? (
+                                  <ShoppingCartIcon className="w-5 h-5 text-orange-400 group-hover:scale-110 transition-transform" />
+                                ) : (
+                                  <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-white group-hover:translate-x-1 transition-all duration-300" />
+                                )}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -555,18 +633,17 @@ export default function CourseModulesPage() {
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
                   <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                     <BarChart3 className="w-5 h-5 text-green-400" />
-                    Your Progress
+                    Video Progress
                   </h3>
                   
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-300">Modules Completed</span>
+                      <span className="text-gray-300">Videos Completed</span>
                       <span className="font-semibold text-white">{completedCount}/{totalModules}</span>
                     </div>
                     
-                    {/* NEW: Module ownership */}
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-300">Modules Owned</span>
+                      <span className="text-gray-300">Videos Owned</span>
                       <span className="font-semibold text-white">{ownedModules}/{totalModules}</span>
                     </div>
                     
@@ -577,7 +654,7 @@ export default function CourseModulesPage() {
 
                     {progressData?.lastAccessed && (
                       <div className="flex items-center justify-between">
-                        <span className="text-gray-300">Last Accessed</span>
+                        <span className="text-gray-300">Last Watched</span>
                         <span className="font-semibold text-white">
                           {new Date(progressData.lastAccessed).toLocaleDateString()}
                         </span>
@@ -588,31 +665,37 @@ export default function CourseModulesPage() {
                   {progressPercentage >= 100 && (
                     <div className="mt-4 p-3 bg-green-500/20 border border-green-500/30 rounded-xl text-center">
                       <Trophy className="w-6 h-6 text-yellow-400 mx-auto mb-2" />
-                      <p className="text-green-300 font-semibold text-sm">Congratulations!</p>
-                      <p className="text-green-400 text-xs">Course completed</p>
+                      <p className="text-green-300 font-semibold text-sm">Course Completed!</p>
+                      <p className="text-green-400 text-xs">All videos watched</p>
                     </div>
                   )}
                 </div>
 
-                {/* NEW: Quick Module Actions */}
+                {/* Video Learning Tips */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                  <h3 className="text-lg font-semibold text-white mb-4">💡 Video Learning</h3>
+                  
+                  <div className="space-y-3 text-sm text-gray-300">
+                    <div className="flex items-start gap-2">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 flex-shrink-0"></div>
+                      <span>Videos auto-complete at 90% watched</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="w-2 h-2 bg-green-400 rounded-full mt-2 flex-shrink-0"></div>
+                      <span>Progress saves automatically every 10%</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full mt-2 flex-shrink-0"></div>
+                      <span>Resume watching from where you left off</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Actions */}
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
                   <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
                   
                   <div className="space-y-3">
-                    <button 
-                      onClick={() => router.push('/bundles')}
-                      className="w-full p-3 bg-purple-500/20 border border-purple-500/30 rounded-xl hover:bg-purple-500/30 transition-all duration-300 text-left"
-                    >
-                      <span className="text-purple-300">🛍️ Create Module Bundle</span>
-                    </button>
-
-                    <button 
-                      onClick={() => router.push('/my-modules')}
-                      className="w-full p-3 bg-blue-500/20 border border-blue-500/30 rounded-xl hover:bg-blue-500/30 transition-all duration-300 text-left"
-                    >
-                      <span className="text-blue-300">📚 My Purchased Modules</span>
-                    </button>
-                    
                     <button 
                       onClick={() => router.push('/my-courses')}
                       className="w-full p-3 bg-green-500/20 border border-green-500/30 rounded-xl hover:bg-green-500/30 transition-all duration-300 text-left"
@@ -627,21 +710,21 @@ export default function CourseModulesPage() {
         </div>
 
         <style jsx>{`
-          .line-clamp-2 { 
+          .line-clamp-1 { 
             display: -webkit-box; 
-            -webkit-line-clamp: 2; 
+            -webkit-line-clamp: 1; 
             -webkit-box-orient: vertical; 
             overflow: hidden; 
           }
         `}</style>
       </main>
 
-      {/* NEW: Module Purchase Modal */}
+      {/* Module Purchase Modal */}
       {showPurchaseModal && selectedModuleForPurchase && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 max-w-md w-full border border-white/20">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white">Purchase Module</h3>
+              <h3 className="text-lg font-bold text-white">Purchase Video</h3>
               <button
                 onClick={() => setShowPurchaseModal(false)}
                 className="p-1 hover:bg-white/10 rounded-lg transition-colors"
@@ -672,24 +755,27 @@ export default function CourseModulesPage() {
         </div>
       )}
 
-      {/* Video Player Modal */}
-      {showVideoPlayer && currentModule && currentModule.type === 'VIDEO' && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4">
+      {/* 🆕 SIMPLIFIED: Video Player Modal (No Manual Complete Button) */}
+      {showVideoPlayer && currentModule && (
+        <div className="fixed inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center p-4">
           <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 max-w-6xl w-full max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-white">{currentModule.title}</h2>
-                {currentModule.videoDuration && (
-                  <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
+                <div className="flex items-center gap-4 mt-2 text-sm text-gray-400">
+                  {currentModule.videoDuration && (
                     <span>Duration: {formatDuration(currentModule.videoDuration)}</span>
-                    {currentModule.isOwned && (
-                      <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs">
-                        ✓ Owned
-                      </span>
-                    )}
-                  </div>
-                )}
+                  )}
+                  {currentModule.completionPercentage > 0 && !currentModule.isCompleted && (
+                    <span>Progress: {Math.round(currentModule.completionPercentage)}%</span>
+                  )}
+                  {currentModule.isCompleted && (
+                    <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs">
+                      ✓ Completed
+                    </span>
+                  )}
+                </div>
               </div>
               <button
                 onClick={() => setShowVideoPlayer(false)}
@@ -709,46 +795,37 @@ export default function CourseModulesPage() {
               />
             </div>
 
-            {/* Module Content */}
+            {/* Module Description */}
             {currentModule.content && (
               <div className="bg-white/5 rounded-xl p-4">
-                <h3 className="font-semibold text-white mb-3">Description</h3>
+                <h3 className="font-semibold text-white mb-3">About This Video</h3>
                 <p className="text-gray-300 whitespace-pre-wrap leading-relaxed">
                   {currentModule.content}
                 </p>
               </div>
             )}
 
-            {/* Module Actions */}
+            {/* 🆕 NEW: Auto-completion info (No manual button) */}
             <div className="mt-6 flex items-center justify-between">
-              <button
-                onClick={() => handleModuleComplete(currentModule.id)}
-                disabled={currentModule.isCompleted || savingProgress}
-                className={`px-6 py-3 rounded-lg transition-colors flex items-center gap-2 ${
-                  currentModule.isCompleted
-                    ? 'bg-green-600 text-white cursor-default'
-                    : savingProgress
-                    ? 'bg-gray-600 text-white cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700 text-white'
-                }`}
-              >
-                {savingProgress ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    Saving...
-                  </>
-                ) : currentModule.isCompleted ? (
-                  <>
+              <div className="text-sm text-gray-400">
+                {currentModule.isCompleted ? (
+                  <span className="flex items-center gap-2 text-green-400">
                     <CheckCircle2 className="w-4 h-4" />
-                    Completed
-                  </>
+                    Video completed automatically
+                  </span>
                 ) : (
-                  'Mark as Complete'
+                  <span>Video will auto-complete at 90% watched</span>
                 )}
-              </button>
+                {savingProgress && (
+                  <span className="flex items-center gap-2 ml-4">
+                    <div className="w-4 h-4 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin"></div>
+                    Saving progress...
+                  </span>
+                )}
+              </div>
 
               <div className="text-sm text-gray-400">
-                Module {modules.findIndex(m => m.id === currentModule.id) + 1} of {modules.length}
+                Video {modules.findIndex(m => m.id === currentModule.id) + 1} of {modules.length}
               </div>
             </div>
           </div>
