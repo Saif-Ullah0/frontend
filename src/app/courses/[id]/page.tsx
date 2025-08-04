@@ -1,4 +1,3 @@
-// app/courses/[id]/page.tsx
 import { fetchCourseById } from '@/lib/api';
 import { notFound } from 'next/navigation';
 import CourseDetail from '@/components/CourseDetail';
@@ -7,12 +6,13 @@ import { Metadata } from 'next';
 export const dynamic = 'force-dynamic';
 
 type Props = {
-  params: { id: string };
+  params: Promise<{ id: string }>; // 🆕 FIXED: params is Promise
 };
 
 // Generate metadata for SEO
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const courseId = parseInt(params.id);
+  const { id } = await params; // 🆕 FIXED: await params
+  const courseId = parseInt(id);
   
   if (isNaN(courseId)) {
     return {
@@ -57,7 +57,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function CourseDetailPage({ params }: Props) {
-  const { id } = params;
+  const { id } = await params; // 🆕 FIXED: await params
   const courseId = parseInt(id);
 
   // Validate course ID
@@ -74,11 +74,18 @@ export default async function CourseDetailPage({ params }: Props) {
       notFound();
     }
 
-    // Ensure modules is an array (fallback to empty array if not)
+    // 🆕 UPDATED: Transform Chapter-based data to work with existing component
     const enhancedCourse = {
       ...course,
-      modules: Array.isArray(course.modules) ? course.modules : [],
-      // Add any other data transformations needed
+      modules: Array.isArray(course.modules) ? course.modules.map(module => ({
+        ...module,
+        // 🆕 NEW: Flatten chapter data for backward compatibility
+        chapters: module.chapters || [],
+        // Keep existing module properties
+        description: module.chapters?.[0]?.description || `Learn about ${module.title}`,
+        duration: module.chapters?.reduce((total, chapter) => total + (chapter.videoDuration || 0), 0) || 15,
+        isPreview: module.chapters?.some(chapter => chapter.publishStatus === 'PUBLISHED') || false,
+      })) : [],
       imageUrl: course.imageUrl || `https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&h=400&fit=crop&crop=center`,
     };
 

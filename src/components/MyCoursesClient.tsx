@@ -1,4 +1,3 @@
-// /components/MyCoursesClient.tsx
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -12,13 +11,17 @@ import {
   ChevronRight,
   Plus,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  GraduationCap,
+  ShoppingCart,
+  Gift
 } from 'lucide-react';
 
 type Course = {
   id: number;
   title: string;
   description: string;
+  price: number; // 🆕 NEW: Include price
   category: {
     name: string;
   };
@@ -32,14 +35,17 @@ type Enrollment = {
   lastAccessed?: string;
   completedModules?: number;
   totalModules?: number;
+  paymentTransactionId?: string; // 🆕 NEW: To distinguish paid vs free
+  enrollmentType?: 'enrolled' | 'purchased'; // 🆕 NEW: Course type
 };
 
 export default function MyCoursesClient() {
-  const [courses, setCourses] = useState<Enrollment[]>([]);
+  const [allCourses, setAllCourses] = useState<Enrollment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [activeTab, setActiveTab] = useState<'enrolled' | 'purchased'>('enrolled'); // 🆕 NEW: Tab state
   const router = useRouter();
 
   useEffect(() => {
@@ -47,20 +53,20 @@ export default function MyCoursesClient() {
       try {
         console.log('🔄 Fetching enrolled courses with progress...');
         
-        // Fetch enrolled courses with progress data from the new API
-        const res = await fetch('http://localhost:5000/api/progress/all', {
+        // 🆕 NEW: Fetch from updated endpoint that separates course types
+        const res = await fetch('http://localhost:5000/api/enrollments/my-courses', {
           credentials: 'include',
         });
 
         if (!res.ok) {
-          console.error('❌ Failed to fetch progress data:', res.status);
+          console.error('❌ Failed to fetch course data:', res.status);
           router.push('/login');
           return;
         }
 
         const data = await res.json();
-        console.log('✅ Progress data loaded:', data);
-        setCourses(data);
+        console.log('✅ Course data loaded:', data);
+        setAllCourses(data);
       } catch (err) {
         console.error('❌ Error fetching courses:', err);
         router.push('/login');
@@ -72,7 +78,19 @@ export default function MyCoursesClient() {
     fetchCourses();
   }, [router]);
 
-  const filteredCourses = courses.filter(enrollment => {
+  // 🆕 NEW: Separate courses by type
+  const enrolledCourses = allCourses.filter(enrollment => 
+    enrollment.enrollmentType === 'enrolled' || (!enrollment.paymentTransactionId && enrollment.course.price === 0)
+  );
+
+  const purchasedCourses = allCourses.filter(enrollment => 
+    enrollment.enrollmentType === 'purchased' || (enrollment.paymentTransactionId || enrollment.course.price > 0)
+  );
+
+  // Get current courses based on active tab
+  const currentCourses = activeTab === 'enrolled' ? enrolledCourses : purchasedCourses;
+
+  const filteredCourses = currentCourses.filter(enrollment => {
     const matchesSearch = enrollment.course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          enrollment.course.category?.name.toLowerCase().includes(searchTerm.toLowerCase());
     
@@ -134,7 +152,7 @@ export default function MyCoursesClient() {
     );
   }
 
-  if (courses.length === 0) {
+  if (allCourses.length === 0) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] flex items-center justify-center text-white relative overflow-hidden">
         <div className="absolute top-[-100px] right-[-100px] w-[400px] h-[400px] bg-gradient-to-r from-purple-500/20 to-pink-500/20 blur-[150px] rounded-full animate-pulse-slow"></div>
@@ -173,16 +191,56 @@ export default function MyCoursesClient() {
           <p className="text-gray-400 text-lg">Track your progress and continue your courses</p>
         </div>
 
+        {/* 🆕 NEW: Course Type Tabs */}
+        <div className="mb-8">
+          <div className="flex items-center justify-center gap-4 bg-white/5 border border-white/10 rounded-2xl p-2 backdrop-blur-xl w-fit mx-auto">
+            <button
+              onClick={() => setActiveTab('enrolled')}
+              className={`flex items-center gap-3 px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                activeTab === 'enrolled'
+                  ? 'bg-blue-500/30 text-blue-300 border border-blue-400/30'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Gift className="w-5 h-5" />
+              <span>Enrolled Courses</span>
+              <span className="bg-white/20 text-xs px-2 py-1 rounded-full">
+                {enrolledCourses.length}
+              </span>
+            </button>
+            
+            <button
+              onClick={() => setActiveTab('purchased')}
+              className={`flex items-center gap-3 px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                activeTab === 'purchased'
+                  ? 'bg-purple-500/30 text-purple-300 border border-purple-400/30'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <ShoppingCart className="w-5 h-5" />
+              <span>Purchased Courses</span>
+              <span className="bg-white/20 text-xs px-2 py-1 rounded-full">
+                {purchasedCourses.length}
+              </span>
+            </button>
+          </div>
+        </div>
+
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
             <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-500/20 rounded-xl">
-                <BookOpen className="w-6 h-6 text-blue-400" />
+              <div className={`p-3 rounded-xl ${activeTab === 'enrolled' ? 'bg-blue-500/20' : 'bg-purple-500/20'}`}>
+                {activeTab === 'enrolled' ? 
+                  <Gift className="w-6 h-6 text-blue-400" /> : 
+                  <ShoppingCart className="w-6 h-6 text-purple-400" />
+                }
               </div>
               <div>
-                <h3 className="text-2xl font-bold text-white">{courses.length}</h3>
-                <p className="text-gray-400 text-sm">Total Courses</p>
+                <h3 className="text-2xl font-bold text-white">{currentCourses.length}</h3>
+                <p className="text-gray-400 text-sm">
+                  {activeTab === 'enrolled' ? 'Enrolled Courses' : 'Purchased Courses'}
+                </p>
               </div>
             </div>
           </div>
@@ -194,7 +252,7 @@ export default function MyCoursesClient() {
               </div>
               <div>
                 <h3 className="text-2xl font-bold text-white">
-                  {courses.filter(c => (c.progress || 0) >= 100).length}
+                  {currentCourses.filter(c => (c.progress || 0) >= 100).length}
                 </h3>
                 <p className="text-gray-400 text-sm">Completed</p>
               </div>
@@ -208,7 +266,7 @@ export default function MyCoursesClient() {
               </div>
               <div>
                 <h3 className="text-2xl font-bold text-white">
-                  {courses.filter(c => (c.progress || 0) > 0 && (c.progress || 0) < 100).length}
+                  {currentCourses.filter(c => (c.progress || 0) > 0 && (c.progress || 0) < 100).length}
                 </h3>
                 <p className="text-gray-400 text-sm">In Progress</p>
               </div>
@@ -225,7 +283,7 @@ export default function MyCoursesClient() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search courses..."
+                  placeholder={`Search ${activeTab} courses...`}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
@@ -270,9 +328,29 @@ export default function MyCoursesClient() {
         {/* Course Grid/List */}
         {filteredCourses.length === 0 ? (
           <div className="text-center py-12">
-            <Search className="w-16 h-16 text-gray-500 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-300 mb-2">No courses found</h3>
-            <p className="text-gray-400">Try adjusting your search or filter criteria</p>
+            <div className="w-16 h-16 mx-auto mb-4 bg-white/10 rounded-full flex items-center justify-center">
+              {activeTab === 'enrolled' ? <Gift className="w-8 h-8 text-gray-400" /> : <ShoppingCart className="w-8 h-8 text-gray-400" />}
+            </div>
+            <h3 className="text-xl font-semibold text-gray-300 mb-2">
+              {searchTerm ? 'No courses found' : `No ${activeTab} courses yet`}
+            </h3>
+            <p className="text-gray-400 mb-6">
+              {searchTerm 
+                ? 'Try adjusting your search or filter criteria' 
+                : activeTab === 'enrolled' 
+                  ? 'Start learning with free courses from our catalog'
+                  : 'Purchase premium courses to access advanced content'
+              }
+            </p>
+            {!searchTerm && (
+              <button
+                onClick={() => router.push('/categories')}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-2 mx-auto"
+              >
+                <Plus className="w-4 h-4" />
+                Browse Courses
+              </button>
+            )}
           </div>
         ) : (
           <div className={`grid gap-6 ${
@@ -282,6 +360,7 @@ export default function MyCoursesClient() {
           }`}>
             {filteredCourses.map((enrollment) => {
               const progress = enrollment.progress || 0;
+              const isPaid = enrollment.course.price > 0 || enrollment.paymentTransactionId;
               
               return viewMode === 'grid' ? (
                 // Grid View
@@ -299,6 +378,12 @@ export default function MyCoursesClient() {
                         'bg-gray-500/20 text-gray-400'
                       }`}>
                         {getStatusText(progress)}
+                      </span>
+                      {/* 🆕 NEW: Course type indicator */}
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                        isPaid ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'
+                      }`}>
+                        {isPaid ? `$${enrollment.course.price}` : 'Free'}
                       </span>
                     </div>
                     <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-white group-hover:translate-x-1 transition-all duration-300" />
@@ -345,7 +430,7 @@ export default function MyCoursesClient() {
                   </div>
                 </div>
               ) : (
-                // List View
+                // List View - Similar structure with horizontal layout
                 <div
                   key={enrollment.id}
                   className="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all duration-300 cursor-pointer group"
@@ -361,13 +446,20 @@ export default function MyCoursesClient() {
                         <h3 className="text-lg font-semibold text-white group-hover:text-blue-300 transition-colors truncate">
                           {enrollment.course.title}
                         </h3>
-                        <span className={`text-xs px-3 py-1 rounded-full font-medium ${
-                          progress >= 100 ? 'bg-green-500/20 text-green-400' :
-                          progress > 0 ? 'bg-blue-500/20 text-blue-400' :
-                          'bg-gray-500/20 text-gray-400'
-                        }`}>
-                          {getStatusText(progress)}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs px-3 py-1 rounded-full font-medium ${
+                            progress >= 100 ? 'bg-green-500/20 text-green-400' :
+                            progress > 0 ? 'bg-blue-500/20 text-blue-400' :
+                            'bg-gray-500/20 text-gray-400'
+                          }`}>
+                            {getStatusText(progress)}
+                          </span>
+                          <span className={`text-xs px-3 py-1 rounded-full font-medium ${
+                            isPaid ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'
+                          }`}>
+                            {isPaid ? `$${enrollment.course.price}` : 'Free'}
+                          </span>
+                        </div>
                       </div>
                       
                       <p className="text-gray-400 text-sm mb-3 line-clamp-1">
