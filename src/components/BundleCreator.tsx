@@ -17,6 +17,8 @@ interface Module {
   title: string;
   price: number;
   duration?: number;
+  isPublished: boolean;
+  isFree: boolean;
   course: {
     id: number;
     title: string;
@@ -64,20 +66,40 @@ export default function BundleCreator({ onBundleCreated, className = "" }: Bundl
       
       if (response.ok) {
         const courses = await response.json();
-        const modules = courses.flatMap((course: any) => 
-          course.modules
-            ?.filter((module: any) => module.price > 0 && module.isPublished) // Only paid & published modules
-            .map((module: any) => ({
-              ...module,
-              course: { id: course.id, title: course.title }
-            })) || []
-        );
+        console.log('📚 All courses received:', courses.length, 'courses');
         
-        setAvailableModules(modules);
-        setFilteredModules(modules);
+        // ✅ IMPROVED: Better filtering logic with debugging
+        const allModules: Module[] = [];
+        
+        courses.forEach((course: any, courseIndex: number) => {
+          console.log(`📖 Course ${courseIndex + 1}: "${course.title}" has ${course.modules?.length || 0} modules`);
+          
+          if (course.modules && Array.isArray(course.modules)) {
+            course.modules.forEach((module: any, moduleIndex: number) => {
+              const isValidModule = module.isPublished && module.price > 0;
+              console.log(`  📄 Module ${moduleIndex + 1}: "${module.title}" - Price: $${module.price}, Published: ${module.isPublished}, Valid: ${isValidModule}`);
+              
+              if (isValidModule) {
+                allModules.push({
+                  ...module,
+                  course: { id: course.id, title: course.title }
+                });
+              }
+            });
+          }
+        });
+
+        console.log('✅ Total valid modules found:', allModules.length);
+        console.log('📋 Valid modules list:', allModules.map(m => `${m.title} ($${m.price})`));
+
+        setAvailableModules(allModules);
+        setFilteredModules(allModules);
+      } else {
+        console.error('❌ Failed to fetch courses:', response.status, response.statusText);
+        toast.error('Failed to load courses');
       }
     } catch (error) {
-      console.error('Error fetching modules:', error);
+      console.error('❌ Error fetching modules:', error);
       toast.error('Failed to load modules');
     } finally {
       setLoadingModules(false);
@@ -118,7 +140,7 @@ export default function BundleCreator({ onBundleCreated, className = "" }: Bundl
     setLoading(true);
     
     try {
-      const response = await fetch('http://localhost:5000/api/payment/bundles/create', {
+      const response = await fetch('http://localhost:5000/api/bundles/create/modules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -298,8 +320,13 @@ export default function BundleCreator({ onBundleCreated, className = "" }: Bundl
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
           ) : filteredModules.length === 0 ? (
-            <div className="text-center py-12 text-gray-400">
-              {searchTerm ? 'No modules match your search' : 'No modules available'}
+            <div className="text-center py-12">
+              <div className="text-gray-400 mb-2">
+                {searchTerm ? 'No modules match your search' : 'No published paid modules available'}
+              </div>
+              <div className="text-sm text-gray-500">
+                {searchTerm ? 'Try a different search term' : 'Only modules with price > $0 can be bundled'}
+              </div>
             </div>
           ) : (
             filteredModules.map((module) => (
