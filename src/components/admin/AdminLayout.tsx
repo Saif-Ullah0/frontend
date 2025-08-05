@@ -14,7 +14,9 @@ import {
   ArrowRightOnRectangleIcon,
   VideoCameraIcon, 
   Bars3Icon,
-  XMarkIcon
+  XMarkIcon,
+  ShoppingBagIcon,
+  RectangleStackIcon
 } from '@heroicons/react/24/outline';
 
 interface AdminLayoutProps {
@@ -34,7 +36,9 @@ const navigation = [
   { name: 'Categories', href: '/admin/categories', icon: FolderIcon },
   { name: 'Courses', href: '/admin/courses', icon: AcademicCapIcon },
   { name: 'Modules', href: '/admin/modules', icon: BookOpenIcon },
-  { name: 'Notes & PDFs', href: '/admin/notes', icon: DocumentIcon }, // Add this line
+  { name: 'Chapters', href: '/admin/chapters', icon: RectangleStackIcon },
+  { name: 'Bundles', href: '/admin/bundles', icon: ShoppingBagIcon },
+  { name: 'Notes & PDFs', href: '/admin/notes', icon: DocumentIcon },
   { name: 'Videos', href: '/admin/video-test', icon: VideoCameraIcon },
 ];
 
@@ -133,6 +137,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           
           <div className="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
             <div className="flex-shrink-0 flex items-center px-4">
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center mr-3">
+                <AcademicCapIcon className="w-5 h-5 text-white" />
+              </div>
               <h1 className="text-xl font-bold text-white">EduAdmin</h1>
             </div>
             <nav className="mt-5 px-2 space-y-1">
@@ -140,7 +147,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 <Link
                   key={item.name}
                   href={item.href}
-                  className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${
+                  className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors ${
                     pathname === item.href
                       ? 'bg-gray-900 text-white'
                       : 'text-gray-300 hover:bg-gray-700 hover:text-white'
@@ -160,6 +167,9 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <div className="flex-1 flex flex-col min-h-0 bg-gray-800 backdrop-blur-lg bg-opacity-80">
           <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
             <div className="flex items-center flex-shrink-0 px-4">
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center mr-3">
+                <AcademicCapIcon className="w-5 h-5 text-white" />
+              </div>
               <h1 className="text-xl font-bold text-white">EduAdmin</h1>
             </div>
             <nav className="mt-5 flex-1 px-2 space-y-1">
