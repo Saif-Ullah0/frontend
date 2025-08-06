@@ -9,11 +9,12 @@ interface User {
   name: string;
   email: string;
   role: 'ADMIN' | 'USER';
+  status: string;
   createdAt: string;
 }
 
 interface UserModalProps {
-  user: User | null; // null for create, user object for edit
+  user: User | null;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -42,7 +43,7 @@ export default function UserModal({ user, onClose, onSuccess }: UserModalProps) 
       setFormData({
         name: user.name,
         email: user.email,
-        password: '', // Don't pre-fill password for security
+        password: '',
         role: user.role
       });
     } else {
@@ -60,13 +61,11 @@ export default function UserModal({ user, onClose, onSuccess }: UserModalProps) 
     setLoading(true);
     setError(null);
 
-    console.log('🔍 UserModal: Submitting form data:', { ...formData, password: '[HIDDEN]' });
-
     try {
-      // For editing, password is optional
+      const submitData = { ...formData };
       if (isEditing && !formData.password) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        delete (formData as any).password; // Remove password if empty during edit
+        delete (submitData as any).password;
       }
 
       const url = isEditing 
@@ -75,21 +74,13 @@ export default function UserModal({ user, onClose, onSuccess }: UserModalProps) 
       
       const method = isEditing ? 'PUT' : 'POST';
 
-      console.log(`🔍 UserModal: Making ${method} request to:`, url);
-
       const response = await fetch(url, {
         method,
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData)
-      });
-
-      console.log('🔍 UserModal: Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
+        body: JSON.stringify(submitData)
       });
 
       if (!response.ok) {
@@ -97,14 +88,10 @@ export default function UserModal({ user, onClose, onSuccess }: UserModalProps) 
         throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const result = await response.json();
-      console.log('✅ UserModal: User saved successfully:', result);
-
       onSuccess();
       
     } catch (err: unknown) {
-      console.error('❌ UserModal: Error saving user:', err);
-      
+      console.error('Error saving user:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to save user';
       setError(errorMessage);
     } finally {
@@ -197,7 +184,7 @@ export default function UserModal({ user, onClose, onSuccess }: UserModalProps) 
               type="password"
               id="password"
               name="password"
-              required={!isEditing} // Password required only for new users
+              required={!isEditing}
               className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder={isEditing ? "Leave blank to keep current password" : "Enter password"}
               value={formData.password}
@@ -223,8 +210,8 @@ export default function UserModal({ user, onClose, onSuccess }: UserModalProps) 
               value={formData.role}
               onChange={handleInputChange}
             >
-              <option value="USER">Regular User</option>
-              <option value="ADMIN">Administrator</option>
+              <option value="USER" className="bg-gray-900">Regular User</option>
+              <option value="ADMIN" className="bg-gray-900">Administrator</option>
             </select>
             <p className="text-xs text-gray-400 mt-1">
               Admins have full access to the admin panel

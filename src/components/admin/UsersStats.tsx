@@ -4,19 +4,25 @@
 import { 
   UserGroupIcon, 
   ShieldCheckIcon, 
-  AcademicCapIcon 
+  AcademicCapIcon,
+  CheckCircleIcon,
+  NoSymbolIcon
 } from '@heroicons/react/24/outline';
 
 interface UsersStatsProps {
   totalUsers: number;
   adminCount: number;
   userCount: number;
+  activeCount: number;
+  bannedCount: number;
 }
 
 export default function UsersStats({ 
   totalUsers, 
   adminCount, 
-  userCount 
+  userCount,
+  activeCount,
+  bannedCount
 }: UsersStatsProps) {
   const stats = [
     {
@@ -26,6 +32,14 @@ export default function UsersStats({
       color: 'from-blue-500 to-blue-600',
       bgColor: 'from-blue-500/20 to-blue-600/20',
       description: 'All registered users'
+    },
+    {
+      name: 'Active Users',
+      value: activeCount.toLocaleString(),
+      icon: CheckCircleIcon,
+      color: 'from-green-500 to-green-600',
+      bgColor: 'from-green-500/20 to-green-600/20',
+      description: 'Users with active accounts'
     },
     {
       name: 'Administrators',
@@ -39,9 +53,17 @@ export default function UsersStats({
       name: 'Regular Users',
       value: userCount.toLocaleString(),
       icon: AcademicCapIcon,
-      color: 'from-green-500 to-green-600',
-      bgColor: 'from-green-500/20 to-green-600/20',
-      description: 'Platform users'
+      color: 'from-purple-500 to-purple-600',
+      bgColor: 'from-purple-500/20 to-purple-600/20',
+      description: 'Standard user accounts'
+    },
+    {
+      name: 'Blocked Users',
+      value: bannedCount.toLocaleString(),
+      icon: NoSymbolIcon,
+      color: 'from-orange-500 to-red-500',
+      bgColor: 'from-orange-500/20 to-red-500/20',
+      description: 'Temporarily blocked accounts'
     }
   ];
 
@@ -66,9 +88,9 @@ export default function UsersStats({
               </div>
               
               {/* Percentage badge if needed */}
-              {stat.name !== 'Total Users' && (
-                <div className="text-xs text-gray-400">
-                  {totalUsers > 0 ? Math.round((parseInt(stat.value.replace(',', '')) / totalUsers) * 100) : 0}%
+              {stat.name !== 'Total Users' && totalUsers > 0 && (
+                <div className="text-xs text-gray-300 bg-white/10 px-2 py-1 rounded-full">
+                  {Math.round((parseInt(stat.value.replace(',', '')) / totalUsers) * 100)}%
                 </div>
               )}
             </div>

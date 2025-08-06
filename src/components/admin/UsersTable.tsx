@@ -9,7 +9,10 @@ import {
   EllipsisHorizontalIcon,
   EnvelopeIcon,
   CalendarIcon,
-  PencilIcon
+  PencilIcon,
+  NoSymbolIcon,
+  CheckCircleIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 
 interface User {
@@ -17,6 +20,7 @@ interface User {
   name: string;
   email: string;
   role: 'ADMIN' | 'USER';
+  status: string;
   createdAt: string;
 }
 
@@ -24,11 +28,21 @@ interface UsersTableProps {
   users: User[];
   onEditUser: (user: User) => void;
   onPromoteUser: (userId: number) => Promise<void>;
+  onToggleUserStatus: (userId: number, currentStatus: string) => Promise<void>;
+  onDeleteUser: (userId: number, userName: string) => Promise<void>;
   onRefresh: () => Promise<void>;
 }
 
-export default function UsersTable({ users, onEditUser, onPromoteUser, onRefresh }: UsersTableProps) {
+export default function UsersTable({ 
+  users, 
+  onEditUser, 
+  onPromoteUser, 
+  onToggleUserStatus,
+  onDeleteUser,
+  onRefresh 
+}: UsersTableProps) {
   const [promotingUsers, setPromotingUsers] = useState<Set<number>>(new Set());
+  const [actioningUsers, setActioningUsers] = useState<Set<number>>(new Set());
 
   const formatDate = (dateString: string) => {
     try {
@@ -54,6 +68,51 @@ export default function UsersTable({ users, onEditUser, onPromoteUser, onRefresh
       await onPromoteUser(userId);
     } finally {
       setPromotingUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
+    }
+  };
+
+  const handleToggleStatus = async (userId: number, currentStatus: string) => {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+
+    const isBlocking = currentStatus === 'ACTIVE';
+    const action = isBlocking ? 'block' : 'unblock';
+    
+    if (!confirm(`Are you sure you want to ${action} "${user.name}"?`)) {
+      return;
+    }
+
+    setActioningUsers(prev => new Set(prev).add(userId));
+    
+    try {
+      await onToggleUserStatus(userId, currentStatus);
+    } finally {
+      setActioningUsers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(userId);
+        return newSet;
+      });
+    }
+  };
+
+  const handleDeleteUser = async (userId: number) => {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+
+    if (!confirm(`Are you sure you want to delete "${user.name}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    setActioningUsers(prev => new Set(prev).add(userId));
+    
+    try {
+      await onDeleteUser(userId, user.name);
+    } finally {
+      setActioningUsers(prev => {
         const newSet = new Set(prev);
         newSet.delete(userId);
         return newSet;
@@ -94,6 +153,9 @@ export default function UsersTable({ users, onEditUser, onPromoteUser, onRefresh
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                 Role
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                Status
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                 Joined
@@ -137,11 +199,26 @@ export default function UsersTable({ users, onEditUser, onPromoteUser, onRefresh
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                     user.role === 'ADMIN' 
                       ? 'bg-red-100 text-red-800 bg-opacity-20' 
-                      : 'bg-green-100 text-green-800 bg-opacity-20'
+                      : 'bg-blue-100 text-blue-800 bg-opacity-20'
                   }`}>
                     {user.role === 'ADMIN' && <ShieldCheckIcon className="h-3 w-3 mr-1" />}
                     {user.role}
                   </span>
+                </td>
+
+                {/* Status */}
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {user.status === 'ACTIVE' ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 bg-opacity-20">
+                      <CheckCircleIcon className="h-3 w-3 mr-1" />
+                      Active
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 bg-opacity-20">
+                      <NoSymbolIcon className="h-3 w-3 mr-1" />
+                      Blocked
+                    </span>
+                  )}
                 </td>
 
                 {/* Joined Date */}
@@ -177,11 +254,51 @@ export default function UsersTable({ users, onEditUser, onPromoteUser, onRefresh
                         ) : (
                           <>
                             <ArrowUpIcon className="h-3 w-3 mr-1" />
-                            Promote to Admin
+                            Promote
                           </>
                         )}
                       </button>
                     )}
+
+                    <button
+                      onClick={() => handleToggleStatus(user.id, user.status)}
+                      disabled={actioningUsers.has(user.id)}
+                      className={`inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                        user.status === 'ACTIVE' 
+                          ? 'bg-orange-600 hover:bg-orange-700' 
+                          : 'bg-green-600 hover:bg-green-700'
+                      }`}
+                    >
+                      {actioningUsers.has(user.id) ? (
+                        <>
+                          <div className="animate-spin h-3 w-3 mr-1 border border-white border-t-transparent rounded-full"></div>
+                          Working...
+                        </>
+                      ) : (
+                        <>
+                          {user.status === 'ACTIVE' ? (
+                            <>
+                              <NoSymbolIcon className="h-3 w-3 mr-1" />
+                              Block
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircleIcon className="h-3 w-3 mr-1" />
+                              Unblock
+                            </>
+                          )}
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => handleDeleteUser(user.id)}
+                      disabled={actioningUsers.has(user.id)}
+                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <TrashIcon className="h-3 w-3 mr-1" />
+                      Delete
+                    </button>
                     
                     <button className="p-1.5 text-gray-400 hover:text-white rounded-md hover:bg-white/10 transition-colors">
                       <EllipsisHorizontalIcon className="h-4 w-4" />

@@ -19,6 +19,7 @@ interface User {
   name: string;
   email: string;
   role: 'ADMIN' | 'USER';
+  status: string;
   createdAt: string;
 }
 
@@ -29,6 +30,7 @@ export default function AdminUsersPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'ALL' | 'ADMIN' | 'USER'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'BANNED'>('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const router = useRouter();
@@ -39,7 +41,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     filterUsers();
-  }, [users, searchTerm, roleFilter]);
+  }, [users, searchTerm, roleFilter, statusFilter]);
 
   const fetchUsers = async () => {
     try {
@@ -66,7 +68,12 @@ export default function AdminUsersPage() {
       }
 
       const data = await response.json();
-      setUsers(data);
+      
+      const activeUsers = Array.isArray(data) 
+        ? data.filter((user: User) => user.status !== 'DELETED')
+        : [];
+      
+      setUsers(activeUsers);
       
     } catch (err: unknown) {
       console.error('Error fetching users:', err);
@@ -80,7 +87,6 @@ export default function AdminUsersPage() {
   const filterUsers = () => {
     let filtered = users;
 
-    // Search filter
     if (searchTerm) {
       filtered = filtered.filter(user => 
         user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -88,9 +94,12 @@ export default function AdminUsersPage() {
       );
     }
 
-    // Role filter
     if (roleFilter !== 'ALL') {
       filtered = filtered.filter(user => user.role === roleFilter);
+    }
+
+    if (statusFilter !== 'ALL') {
+      filtered = filtered.filter(user => user.status === statusFilter);
     }
 
     setFilteredUsers(filtered);
@@ -99,9 +108,10 @@ export default function AdminUsersPage() {
   const clearAllFilters = () => {
     setSearchTerm('');
     setRoleFilter('ALL');
+    setStatusFilter('ALL');
   };
 
-  const hasActiveFilters = searchTerm || roleFilter !== 'ALL';
+  const hasActiveFilters = searchTerm || roleFilter !== 'ALL' || statusFilter !== 'ALL';
 
   const handleCreateUser = () => {
     setEditingUser(null);
@@ -114,10 +124,6 @@ export default function AdminUsersPage() {
   };
 
   const handlePromoteUser = async (userId: number) => {
-    if (!confirm('Are you sure you want to promote this user to admin? This will give them full administrative access.')) {
-      return;
-    }
-    
     try {
       const response = await fetch(`http://localhost:5000/api/admin/users/${userId}/promote`, {
         method: 'PUT',
@@ -128,18 +134,69 @@ export default function AdminUsersPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to promote user: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to promote user`);
       }
 
-      // Refresh users list
       await fetchUsers();
       
     } catch (err: unknown) {
       console.error('Error promoting user:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to promote user';
       setError(errorMessage);
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  const handleToggleUserStatus = async (userId: number, currentStatus: string) => {
+    try {
+      const isBlocking = currentStatus === 'ACTIVE';
+      const endpoint = isBlocking ? 'ban' : 'unban';
       
-      // Clear error after 5 seconds
+      const response = await fetch(`http://localhost:5000/api/admin/users/${userId}/${endpoint}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to ${endpoint} user`);
+      }
+
+      await fetchUsers();
+      
+    } catch (err: unknown) {
+      console.error('Error toggling user status:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update user status';
+      setError(errorMessage);
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  const handleDeleteUser = async (userId: number, userName: string) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/admin/users/${userId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to delete user');
+      }
+
+      await fetchUsers();
+      
+    } catch (err: unknown) {
+      console.error('Error deleting user:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to delete user';
+      setError(errorMessage);
       setTimeout(() => setError(null), 5000);
     }
   };
@@ -186,8 +243,12 @@ export default function AdminUsersPage() {
     );
   }
 
+  // Calculate stats
+  const totalUsers = users.length;
   const adminCount = users.filter(user => user.role === 'ADMIN').length;
   const userCount = users.filter(user => user.role === 'USER').length;
+  const activeCount = users.filter(user => user.status === 'ACTIVE').length;
+  const bannedCount = users.filter(user => user.status === 'BANNED').length;
 
   return (
     <AdminLayout>
@@ -196,7 +257,7 @@ export default function AdminUsersPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
           <div className="mb-4 sm:mb-0">
             <h1 className="text-3xl font-bold text-white mb-2">Users Management</h1>
-            <p className="text-gray-400">Manage platform users and administrative permissions</p>
+            <p className="text-gray-400">Manage platform users, permissions, and account status</p>
           </div>
           
           <button 
@@ -210,9 +271,11 @@ export default function AdminUsersPage() {
 
         {/* Stats */}
         <UsersStats
-          totalUsers={users.length}
+          totalUsers={totalUsers}
           adminCount={adminCount}
           userCount={userCount}
+          activeCount={activeCount}
+          bannedCount={bannedCount}
         />
 
         {/* Search and Filters */}
@@ -243,6 +306,20 @@ export default function AdminUsersPage() {
                 <option value="USER" className="bg-gray-900">Users</option>
               </select>
             </div>
+
+            {/* Status Filter */}
+            <div className="relative">
+              <FunnelIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <select
+                className="pl-10 pr-8 py-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[120px]"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'ACTIVE' | 'BANNED')}
+              >
+                <option value="ALL" className="bg-gray-900">All Status</option>
+                <option value="ACTIVE" className="bg-gray-900">Active</option>
+                <option value="BANNED" className="bg-gray-900">Blocked</option>
+              </select>
+            </div>
           </div>
 
           {/* Results Summary & Clear Filters */}
@@ -251,12 +328,17 @@ export default function AdminUsersPage() {
               Showing {filteredUsers.length} of {users.length} users
               {searchTerm && (
                 <span className="ml-2 text-blue-400">
-                  • Search: &quot;{searchTerm}&quot;
+                  • Search: "{searchTerm}"
                 </span>
               )}
               {roleFilter !== 'ALL' && (
                 <span className="ml-2 text-blue-400">
                   • Role: {roleFilter}
+                </span>
+              )}
+              {statusFilter !== 'ALL' && (
+                <span className="ml-2 text-blue-400">
+                  • Status: {statusFilter}
                 </span>
               )}
             </div>
@@ -309,6 +391,8 @@ export default function AdminUsersPage() {
             users={filteredUsers}
             onEditUser={handleEditUser}
             onPromoteUser={handlePromoteUser}
+            onToggleUserStatus={handleToggleUserStatus}
+            onDeleteUser={handleDeleteUser}
             onRefresh={fetchUsers}
           />
         )}
