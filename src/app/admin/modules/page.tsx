@@ -1,4 +1,3 @@
-// frontend/src/app/admin/modules/page.tsx
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -12,32 +11,50 @@ import {
   PlusIcon, 
   FunnelIcon,
   RectangleStackIcon,
-  XMarkIcon
+  XMarkIcon,
+  CurrencyDollarIcon
 } from '@heroicons/react/24/outline';
 
 interface Module {
   id: number;
   title: string;
-  slug: string;
-  description: string;
-  order: number;
+  slug?: string;
+  description?: string;
+  price?: number;
+  isFree?: boolean;
   isPublished: boolean;
-  createdAt: string;
+  publishStatus?: string;
+  orderIndex?: number;
+  courseId: number;
   course: {
     id: number;
     title: string;
-    category: {
+    category?: {
+      id: number;
       name: string;
     };
   };
+  chapters?: Array<{
+    id: string;
+    title: string;
+    type: string;
+    publishStatus: string;
+    order?: number;
+  }>;
   _count?: {
-    lessons: number;
+    chapters?: number;
+    notes?: number;
+    moduleEnrollments?: number;
+    bundleItems?: number;
   };
+  createdAt: string;
+  updatedAt?: string;
 }
 
 interface Course {
   id: number;
   title: string;
+  publishStatus?: string;
 }
 
 export default function AdminModulesPage() {
@@ -49,6 +66,7 @@ export default function AdminModulesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'DRAFT'>('ALL');
   const [courseFilter, setCourseFilter] = useState<number | 'ALL'>('ALL');
+  const [priceFilter, setPriceFilter] = useState<'ALL' | 'FREE' | 'PAID'>('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingModule, setEditingModule] = useState<Module | null>(null);
   const router = useRouter();
@@ -59,7 +77,7 @@ export default function AdminModulesPage() {
 
   useEffect(() => {
     filterModules();
-  }, [modules, searchTerm, statusFilter, courseFilter]);
+  }, [modules, searchTerm, statusFilter, courseFilter, priceFilter]);
 
   const fetchModules = async () => {
     try {
@@ -86,7 +104,46 @@ export default function AdminModulesPage() {
       }
 
       const data = await response.json();
-      setModules(data);
+      
+      // Handle different response structures
+      let modulesArray = [];
+      if (Array.isArray(data)) {
+        modulesArray = data;
+      } else if (data.modules && Array.isArray(data.modules)) {
+        modulesArray = data.modules;
+      } else {
+        modulesArray = [];
+      }
+      
+      // Normalize data
+      const normalizedModules = modulesArray.map((module: any) => ({
+        id: module.id,
+        title: module.title || 'Untitled Module',
+        slug: module.slug || '',
+        description: module.description || '',
+        price: module.price || 0,
+        isFree: module.isFree !== undefined ? module.isFree : (module.price === 0),
+        isPublished: Boolean(module.isPublished),
+        publishStatus: module.publishStatus || (module.isPublished ? 'PUBLISHED' : 'DRAFT'),
+        orderIndex: module.orderIndex || 0,
+        courseId: module.courseId || module.course?.id || 0,
+        course: {
+          id: module.course?.id || module.courseId || 0,
+          title: module.course?.title || 'Unknown Course',
+          category: module.course?.category || null
+        },
+        chapters: module.chapters || [],
+        _count: {
+          chapters: module._count?.chapters || module.chapters?.length || 0,
+          notes: module._count?.notes || 0,
+          moduleEnrollments: module._count?.moduleEnrollments || 0,
+          bundleItems: module._count?.bundleItems || 0
+        },
+        createdAt: module.createdAt || new Date().toISOString(),
+        updatedAt: module.updatedAt || module.createdAt || new Date().toISOString()
+      }));
+      
+      setModules(normalizedModules);
       
     } catch (err: unknown) {
       console.error('Error fetching modules:', err);
@@ -105,7 +162,13 @@ export default function AdminModulesPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setCourses(data);
+        let coursesArray = [];
+        if (Array.isArray(data)) {
+          coursesArray = data;
+        } else if (data.courses && Array.isArray(data.courses)) {
+          coursesArray = data.courses;
+        }
+        setCourses(coursesArray);
       }
     } catch (err) {
       console.error('Error fetching courses:', err);
@@ -113,13 +176,18 @@ export default function AdminModulesPage() {
   };
 
   const filterModules = () => {
-    let filtered = modules;
+    if (!Array.isArray(modules)) {
+      setFilteredModules([]);
+      return;
+    }
+
+    let filtered = [...modules];
 
     // Search filter
     if (searchTerm) {
       filtered = filtered.filter(module => 
         module.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        module.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (module.description && module.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
         module.course.title.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
@@ -133,7 +201,14 @@ export default function AdminModulesPage() {
 
     // Course filter
     if (courseFilter !== 'ALL') {
-      filtered = filtered.filter(module => module.course.id === courseFilter);
+      filtered = filtered.filter(module => module.courseId === courseFilter);
+    }
+
+    // Price filter
+    if (priceFilter !== 'ALL') {
+      filtered = filtered.filter(module => 
+        priceFilter === 'FREE' ? (module.isFree || module.price === 0) : (!module.isFree && module.price > 0)
+      );
     }
 
     setFilteredModules(filtered);
@@ -143,9 +218,10 @@ export default function AdminModulesPage() {
     setSearchTerm('');
     setStatusFilter('ALL');
     setCourseFilter('ALL');
+    setPriceFilter('ALL');
   };
 
-  const hasActiveFilters = searchTerm || statusFilter !== 'ALL' || courseFilter !== 'ALL';
+  const hasActiveFilters = searchTerm || statusFilter !== 'ALL' || courseFilter !== 'ALL' || priceFilter !== 'ALL';
 
   const handleCreateModule = () => {
     setEditingModule(null);
@@ -172,7 +248,8 @@ export default function AdminModulesPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to delete module: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to delete module: ${response.statusText}`);
       }
 
       // Refresh modules list
@@ -230,9 +307,12 @@ export default function AdminModulesPage() {
     );
   }
 
-  const publishedCount = modules.filter(module => module.isPublished).length;
-  const draftCount = modules.filter(module => !module.isPublished).length;
-  const totalLessons = modules.reduce((sum, module) => sum + (module._count?.lessons || 0), 0);
+  const publishedModules = modules.filter(module => module.isPublished).length;
+  const draftModules = modules.filter(module => !module.isPublished).length;
+  const freeModules = modules.filter(module => module.isFree || module.price === 0).length;
+  const paidModules = modules.filter(module => !module.isFree && module.price > 0).length;
+  const totalChapters = modules.reduce((sum, module) => sum + (module._count?.chapters || 0), 0);
+  const totalEnrollments = modules.reduce((sum, module) => sum + (module._count?.moduleEnrollments || 0), 0);
 
   return (
     <AdminLayout>
@@ -256,9 +336,12 @@ export default function AdminModulesPage() {
         {/* Stats */}
         <ModulesStats
           totalModules={modules.length}
-          publishedModules={publishedCount}
-          draftModules={draftCount}
-          totalLessons={totalLessons}
+          publishedModules={publishedModules}
+          draftModules={draftModules}
+          freeModules={freeModules}
+          paidModules={paidModules}
+          totalChapters={totalChapters}
+          totalEnrollments={totalEnrollments}
         />
 
         {/* Search and Filters */}
@@ -306,6 +389,20 @@ export default function AdminModulesPage() {
                 ))}
               </select>
             </div>
+
+            {/* Price Filter */}
+            <div className="relative">
+              <CurrencyDollarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <select
+                className="pl-10 pr-8 py-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[130px]"
+                value={priceFilter}
+                onChange={(e) => setPriceFilter(e.target.value as 'ALL' | 'FREE' | 'PAID')}
+              >
+                <option value="ALL" className="bg-gray-900">All Prices</option>
+                <option value="FREE" className="bg-gray-900">Free Modules</option>
+                <option value="PAID" className="bg-gray-900">Paid Modules</option>
+              </select>
+            </div>
           </div>
 
           {/* Results Summary & Clear Filters */}
@@ -314,7 +411,7 @@ export default function AdminModulesPage() {
               Showing {filteredModules.length} of {modules.length} modules
               {searchTerm && (
                 <span className="ml-2 text-blue-400">
-                  • Search: &quot;{searchTerm}&quot;
+                  • Search: "{searchTerm}"
                 </span>
               )}
               {statusFilter !== 'ALL' && (
@@ -325,6 +422,11 @@ export default function AdminModulesPage() {
               {courseFilter !== 'ALL' && (
                 <span className="ml-2 text-blue-400">
                   • Course: {courses.find(c => c.id === courseFilter)?.title}
+                </span>
+              )}
+              {priceFilter !== 'ALL' && (
+                <span className="ml-2 text-blue-400">
+                  • Price: {priceFilter}
                 </span>
               )}
             </div>

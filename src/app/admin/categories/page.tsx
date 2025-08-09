@@ -1,4 +1,3 @@
-// frontend/src/app/admin/categories/page.tsx
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -7,7 +6,12 @@ import AdminLayout from '@/components/admin/AdminLayout';
 import CategoriesTable from '@/components/admin/CategoriesTable';
 import CategoriesStats from '@/components/admin/CategoriesStats';
 import CategoryModal from '@/components/admin/CategoryModal';
-import { MagnifyingGlassIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { 
+  MagnifyingGlassIcon, 
+  PlusIcon, 
+  CurrencyDollarIcon,
+  XMarkIcon 
+} from '@heroicons/react/24/outline';
 
 interface Category {
   id: number;
@@ -19,6 +23,11 @@ interface Category {
   _count?: {
     courses: number;
   };
+  courses?: Array<{
+    id: number;
+    title: string;
+    price: number;
+  }>;
 }
 
 export default function AdminCategoriesPage() {
@@ -27,6 +36,7 @@ export default function AdminCategoriesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [priceFilter, setPriceFilter] = useState<'ALL' | 'HAS_FREE' | 'HAS_PAID' | 'MIXED'>('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const router = useRouter();
@@ -37,7 +47,7 @@ export default function AdminCategoriesPage() {
 
   useEffect(() => {
     filterCategories();
-  }, [categories, searchTerm]);
+  }, [categories, searchTerm, priceFilter]);
 
   const fetchCategories = async () => {
     try {
@@ -64,7 +74,16 @@ export default function AdminCategoriesPage() {
       }
 
       const data = await response.json();
-      setCategories(data);
+      
+      // Handle different response structures
+      let categoriesArray = [];
+      if (Array.isArray(data)) {
+        categoriesArray = data;
+      } else if (data.categories && Array.isArray(data.categories)) {
+        categoriesArray = data.categories;
+      }
+      
+      setCategories(categoriesArray);
       
     } catch (err: unknown) {
       console.error('Error fetching categories:', err);
@@ -78,6 +97,7 @@ export default function AdminCategoriesPage() {
   const filterCategories = () => {
     let filtered = categories;
 
+    // Search filter
     if (searchTerm) {
       filtered = filtered.filter(category => 
         category.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -85,8 +105,35 @@ export default function AdminCategoriesPage() {
       );
     }
 
+    // Price filter (based on courses in category)
+    if (priceFilter !== 'ALL' && categories.length > 0) {
+      filtered = filtered.filter(category => {
+        const courses = category.courses || [];
+        const freeCourses = courses.filter(course => course.price === 0);
+        const paidCourses = courses.filter(course => course.price > 0);
+        
+        switch (priceFilter) {
+          case 'HAS_FREE':
+            return freeCourses.length > 0;
+          case 'HAS_PAID':
+            return paidCourses.length > 0;
+          case 'MIXED':
+            return freeCourses.length > 0 && paidCourses.length > 0;
+          default:
+            return true;
+        }
+      });
+    }
+
     setFilteredCategories(filtered);
   };
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setPriceFilter('ALL');
+  };
+
+  const hasActiveFilters = searchTerm || priceFilter !== 'ALL';
 
   const handleCreateCategory = () => {
     setEditingCategory(null);
@@ -113,7 +160,8 @@ export default function AdminCategoriesPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to delete category: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to delete category: ${response.statusText}`);
       }
 
       // Refresh categories list
@@ -172,6 +220,12 @@ export default function AdminCategoriesPage() {
   }
 
   const totalCourses = categories.reduce((sum, cat) => sum + (cat._count?.courses || 0), 0);
+  const categoriesWithFreeCourses = categories.filter(cat => 
+    cat.courses?.some(course => course.price === 0)
+  ).length;
+  const categoriesWithPaidCourses = categories.filter(cat => 
+    cat.courses?.some(course => course.price > 0)
+  ).length;
 
   return (
     <AdminLayout>
@@ -196,39 +250,65 @@ export default function AdminCategoriesPage() {
         <CategoriesStats
           totalCategories={categories.length}
           totalCourses={totalCourses}
+          categoriesWithFreeCourses={categoriesWithFreeCourses}
+          categoriesWithPaidCourses={categoriesWithPaidCourses}
           avgCoursesPerCategory={categories.length > 0 ? Math.round(totalCourses / categories.length) : 0}
         />
 
         {/* Search & Filters */}
         <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
-          <div className="relative">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search categories by name or description..."
-              className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="flex flex-col sm:flex-row gap-4">
+            {/* Search */}
+            <div className="relative flex-1">
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search categories by name or description..."
+                className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            {/* Course Price Filter */}
+            <div className="relative">
+              <CurrencyDollarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <select
+                className="pl-10 pr-8 py-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[180px]"
+                value={priceFilter}
+                onChange={(e) => setPriceFilter(e.target.value as 'ALL' | 'HAS_FREE' | 'HAS_PAID' | 'MIXED')}
+              >
+                <option value="ALL" className="bg-gray-900">All Categories</option>
+                <option value="HAS_FREE" className="bg-gray-900">Has Free Courses</option>
+                <option value="HAS_PAID" className="bg-gray-900">Has Paid Courses</option>
+                <option value="MIXED" className="bg-gray-900">Mixed (Free & Paid)</option>
+              </select>
+            </div>
           </div>
 
-          {/* Results Summary */}
-          <div className="mt-4 flex items-center justify-between text-sm text-gray-400">
-            <span>
+          {/* Results Summary & Clear Filters */}
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <div className="text-gray-400">
               Showing {filteredCategories.length} of {categories.length} categories
               {searchTerm && (
                 <span className="ml-2 text-blue-400">
-                  • Filtered by: &quot;{searchTerm}&quot;
+                  • Search: "{searchTerm}"
                 </span>
               )}
-            </span>
+              {priceFilter !== 'ALL' && (
+                <span className="ml-2 text-blue-400">
+                  • Filter: {priceFilter.replace('_', ' ').toLowerCase()}
+                </span>
+              )}
+            </div>
             
-            {searchTerm && (
+            {hasActiveFilters && (
               <button
-                onClick={() => setSearchTerm('')}
-                className="text-blue-400 hover:text-blue-300 underline"
+                onClick={clearAllFilters}
+                className="flex items-center gap-1 text-blue-400 hover:text-blue-300 underline"
               >
-                Clear search
+                <XMarkIcon className="h-4 w-4" />
+                Clear all filters
               </button>
             )}
           </div>
@@ -238,11 +318,17 @@ export default function AdminCategoriesPage() {
         {filteredCategories.length === 0 ? (
           <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-12 text-center">
             <div className="text-gray-400 mb-4">
-              {searchTerm ? (
+              {hasActiveFilters ? (
                 <>
                   <MagnifyingGlassIcon className="h-16 w-16 mx-auto mb-4 opacity-50" />
                   <h3 className="text-lg font-semibold mb-2">No categories found</h3>
-                  <p>No categories match your search criteria.</p>
+                  <p className="mb-4">No categories match your current filters.</p>
+                  <button
+                    onClick={clearAllFilters}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Clear Filters
+                  </button>
                 </>
               ) : (
                 <>

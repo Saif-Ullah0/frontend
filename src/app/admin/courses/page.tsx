@@ -1,4 +1,3 @@
-// frontend/src/app/admin/courses/page.tsx
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -23,6 +22,8 @@ interface Course {
   price: number;
   imageUrl: string;
   isDeleted: boolean;
+  publishStatus?: string;
+  isPaid?: boolean;
   createdAt: string;
   category: {
     id: number;
@@ -48,6 +49,7 @@ export default function AdminCoursesPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<number | 'ALL'>('ALL');
   const [priceFilter, setPriceFilter] = useState<'ALL' | 'FREE' | 'PAID'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'DRAFT'>('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const router = useRouter();
@@ -58,7 +60,7 @@ export default function AdminCoursesPage() {
 
   useEffect(() => {
     filterCourses();
-  }, [courses, searchTerm, categoryFilter, priceFilter]);
+  }, [courses, searchTerm, categoryFilter, priceFilter, statusFilter]);
 
   const fetchCourses = async () => {
     try {
@@ -85,7 +87,16 @@ export default function AdminCoursesPage() {
       }
 
       const data = await response.json();
-      setCourses(data);
+      
+      // Handle different response structures
+      let coursesArray = [];
+      if (Array.isArray(data)) {
+        coursesArray = data;
+      } else if (data.courses && Array.isArray(data.courses)) {
+        coursesArray = data.courses;
+      }
+      
+      setCourses(coursesArray);
       
     } catch (err: unknown) {
       console.error('Error fetching courses:', err);
@@ -104,7 +115,13 @@ export default function AdminCoursesPage() {
 
       if (response.ok) {
         const data = await response.json();
-        setCategories(data);
+        let categoriesArray = [];
+        if (Array.isArray(data)) {
+          categoriesArray = data;
+        } else if (data.categories && Array.isArray(data.categories)) {
+          categoriesArray = data.categories;
+        }
+        setCategories(categoriesArray);
       }
     } catch (err) {
       console.error('Error fetching categories:', err);
@@ -135,6 +152,14 @@ export default function AdminCoursesPage() {
       );
     }
 
+    // Status filter
+    if (statusFilter !== 'ALL') {
+      filtered = filtered.filter(course => {
+        const isPublished = course.publishStatus === 'PUBLISHED' || course.publishStatus === undefined;
+        return statusFilter === 'PUBLISHED' ? isPublished : !isPublished;
+      });
+    }
+
     setFilteredCourses(filtered);
   };
 
@@ -142,9 +167,10 @@ export default function AdminCoursesPage() {
     setSearchTerm('');
     setCategoryFilter('ALL');
     setPriceFilter('ALL');
+    setStatusFilter('ALL');
   };
 
-  const hasActiveFilters = searchTerm || categoryFilter !== 'ALL' || priceFilter !== 'ALL';
+  const hasActiveFilters = searchTerm || categoryFilter !== 'ALL' || priceFilter !== 'ALL' || statusFilter !== 'ALL';
 
   const handleCreateCourse = () => {
     setEditingCourse(null);
@@ -171,7 +197,8 @@ export default function AdminCoursesPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to delete course: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to delete course: ${response.statusText}`);
       }
 
       // Refresh courses list
@@ -232,8 +259,12 @@ export default function AdminCoursesPage() {
   const activeCourses = courses.filter(course => !course.isDeleted);
   const freeCourses = activeCourses.filter(course => course.price === 0).length;
   const paidCourses = activeCourses.filter(course => course.price > 0).length;
-  const totalEnrollments = activeCourses.reduce((sum, course) => sum + (course._count?.enrollments || 0), 0);
-  const totalRevenue = activeCourses.reduce((sum, course) => sum + (course.price * (course._count?.enrollments || 0)), 0);
+  const publishedCourses = activeCourses.filter(course => 
+    course.publishStatus === 'PUBLISHED' || course.publishStatus === undefined
+  ).length;
+  const draftCourses = activeCourses.filter(course => 
+    course.publishStatus === 'DRAFT'
+  ).length;
 
   return (
     <AdminLayout>
@@ -254,13 +285,15 @@ export default function AdminCoursesPage() {
           </button>
         </div>
 
-        {/* Stats */}
+        {/* Stats - Removed totalEnrollments and totalRevenue */}
         <CoursesStats
           totalCourses={activeCourses.length}
           freeCourses={freeCourses}
           paidCourses={paidCourses}
-          totalEnrollments={totalEnrollments}
-          totalRevenue={totalRevenue}
+          publishedCourses={publishedCourses}
+          draftCourses={draftCourses}
+          totalEnrollments={0} // Not used anymore
+          totalRevenue={0} // Not used anymore
         />
 
         {/* Search and Filters */}
@@ -278,6 +311,20 @@ export default function AdminCoursesPage() {
               />
             </div>
 
+            {/* Status Filter */}
+            <div className="relative">
+              <FunnelIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <select
+                className="pl-10 pr-8 py-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[130px]"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'PUBLISHED' | 'DRAFT')}
+              >
+                <option value="ALL" className="bg-gray-900">All Status</option>
+                <option value="PUBLISHED" className="bg-gray-900">Published</option>
+                <option value="DRAFT" className="bg-gray-900">Draft</option>
+              </select>
+            </div>
+
             {/* Category Filter */}
             <div className="relative">
               <FunnelIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -286,7 +333,7 @@ export default function AdminCoursesPage() {
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value === 'ALL' ? 'ALL' : parseInt(e.target.value))}
               >
-                <option value="ALL">All Categories</option>
+                <option value="ALL" className="bg-gray-900">All Categories</option>
                 {categories.map(category => (
                   <option key={category.id} value={category.id} className="bg-gray-900">
                     {category.name}
@@ -317,6 +364,11 @@ export default function AdminCoursesPage() {
               {searchTerm && (
                 <span className="ml-2 text-blue-400">
                   • Search: "{searchTerm}"
+                </span>
+              )}
+              {statusFilter !== 'ALL' && (
+                <span className="ml-2 text-blue-400">
+                  • Status: {statusFilter}
                 </span>
               )}
               {categoryFilter !== 'ALL' && (

@@ -1,85 +1,105 @@
-// frontend/src/components/admin/CategoryModal.tsx
 "use client";
 
 import { useState, useEffect } from 'react';
-import { XMarkIcon, PhotoIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
-interface Category {
-  id: number;
-  name: string;
-  slug: string;
-  description: string;
-  imageUrl: string;
+interface Chapter {
+  id: string;
+  title: string;
+  description?: string;
+  moduleId: number;
+  order: number;
+  type: 'TEXT' | 'VIDEO' | 'PDF' | 'QUIZ';
+  status: 'PUBLISHED' | 'DRAFT';
   createdAt: string;
 }
 
-interface CategoryModalProps {
-  category: Category | null; // null for create, category object for edit
+interface Module {
+  id: number;
+  title: string;
+  course?: {
+    id: number;
+    title: string;
+  };
+}
+
+interface ChapterModalProps {
+  chapter: Chapter | null;
+  modules?: Module[]; // Made optional to handle undefined
   onClose: () => void;
   onSuccess: () => void;
 }
 
 interface FormData {
-  name: string;
+  title: string;
   description: string;
-  imageUrl: string;
+  moduleId: number | '';
+  order: number | '';
+  type: 'TEXT' | 'VIDEO' | 'PDF' | 'QUIZ' | '';
+  status: 'PUBLISHED' | 'DRAFT';
 }
 
-export default function CategoryModal({ category, onClose, onSuccess }: CategoryModalProps) {
+export default function ChapterModal({ chapter, modules = [], onClose, onSuccess }: ChapterModalProps) {
   const [formData, setFormData] = useState<FormData>({
-    name: '',
+    title: '',
     description: '',
-    imageUrl: ''
+    moduleId: '',
+    order: '',
+    type: '',
+    status: 'DRAFT',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isEditing = Boolean(category);
+  // Log modules prop for debugging
+  useEffect(() => {
+    console.log('ChapterModal received modules:', modules);
+  }, [modules]);
+
+  const isEditing = Boolean(chapter);
 
   useEffect(() => {
-    if (category) {
+    if (chapter) {
       setFormData({
-        name: category.name,
-        description: category.description,
-        imageUrl: category.imageUrl
+        title: chapter.title,
+        description: chapter.description || '',
+        moduleId: chapter.moduleId,
+        order: chapter.order,
+        type: chapter.type,
+        status: chapter.status,
       });
     } else {
       setFormData({
-        name: '',
+        title: '',
         description: '',
-        imageUrl: ''
+        moduleId: '',
+        order: '',
+        type: '',
+        status: 'DRAFT',
       });
     }
-  }, [category]);
-
-  const generateSlug = (name: string) => {
-    return name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-  };
+  }, [chapter]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    console.log('🔍 CategoryModal: Submitting form data:', formData);
-
     try {
-      const slug = generateSlug(formData.name);
-      const requestData = {
-        ...formData,
-        slug
+      const submitData = {
+        title: formData.title,
+        description: formData.description,
+        moduleId: Number(formData.moduleId),
+        order: Number(formData.order),
+        type: formData.type,
+        status: formData.status,
       };
 
-      const url = isEditing 
-        ? `http://localhost:5000/api/admin/categories/${category!.id}`
-        : 'http://localhost:5000/api/admin/categories';
-      
-      const method = isEditing ? 'PUT' : 'POST';
+      const url = isEditing
+        ? `http://localhost:5000/api/admin/chapters/${chapter!.id}`
+        : `http://localhost:5000/api/admin/chapters`;
 
-      console.log(`🔍 CategoryModal: Making ${method} request to:`, url);
+      const method = isEditing ? 'PUT' : 'POST';
 
       const response = await fetch(url, {
         method,
@@ -87,13 +107,7 @@ export default function CategoryModal({ category, onClose, onSuccess }: Category
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestData)
-      });
-
-      console.log('🔍 CategoryModal: Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
+        body: JSON.stringify(submitData),
       });
 
       if (!response.ok) {
@@ -101,26 +115,21 @@ export default function CategoryModal({ category, onClose, onSuccess }: Category
         throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const result = await response.json();
-      console.log('✅ CategoryModal: Category saved successfully:', result);
-
       onSuccess();
-      
     } catch (err: unknown) {
-      console.error('❌ CategoryModal: Error saving category:', err);
-      
-      const errorMessage = err instanceof Error ? err.message : 'Failed to save category';
+      console.error('Error saving chapter:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save chapter';
       setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
@@ -131,7 +140,7 @@ export default function CategoryModal({ category, onClose, onSuccess }: Category
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
       onClick={handleOverlayClick}
     >
@@ -139,7 +148,7 @@ export default function CategoryModal({ category, onClose, onSuccess }: Category
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <h2 className="text-xl font-bold text-white">
-            {isEditing ? 'Edit Category' : 'Create New Category'}
+            {isEditing ? 'Edit Chapter' : 'Create New Chapter'}
           </h2>
           <button
             onClick={onClose}
@@ -158,80 +167,131 @@ export default function CategoryModal({ category, onClose, onSuccess }: Category
             </div>
           )}
 
-          {/* Category Name */}
+          {/* Chapter Title */}
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-2">
-              Category Name *
+            <label htmlFor="title" className="block text-sm font-medium text-gray-300 mb-2">
+              Chapter Title *
             </label>
             <input
               type="text"
-              id="name"
-              name="name"
+              id="title"
+              name="title"
               required
               className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter category name"
-              value={formData.name}
+              placeholder="Enter chapter title"
+              value={formData.title}
               onChange={handleInputChange}
             />
-            {formData.name && (
-              <p className="text-xs text-gray-400 mt-1">
-                Slug: /{generateSlug(formData.name)}
-              </p>
-            )}
           </div>
 
           {/* Description */}
           <div>
             <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-2">
-              Description *
+              Description
             </label>
             <textarea
               id="description"
               name="description"
-              required
               rows={3}
               className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder="Describe this category"
+              placeholder="Enter chapter description (optional)"
               value={formData.description}
               onChange={handleInputChange}
             />
           </div>
 
-          {/* Image URL */}
+          {/* Module Selection */}
           <div>
-            <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-300 mb-2">
-              Image URL
+            <label htmlFor="moduleId" className="block text-sm font-medium text-gray-300 mb-2">
+              Module *
             </label>
-            <input
-              type="url"
-              id="imageUrl"
-              name="imageUrl"
-              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="https://example.com/image.jpg"
-              value={formData.imageUrl}
+            <select
+              id="moduleId"
+              name="moduleId"
+              required
+              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={formData.moduleId}
               onChange={handleInputChange}
-            />
+            >
+              <option value="" className="bg-gray-900">Select a module</option>
+              {modules && Array.isArray(modules) && modules.length > 0 ? (
+                modules.map((module) => (
+                  <option key={module.id} value={module.id} className="bg-gray-900">
+                    {module.title} {module.course ? `(${module.course.title})` : ''}
+                  </option>
+                ))
+              ) : (
+                <option value="" disabled className="bg-gray-900">
+                  No modules available
+                </option>
+              )}
+            </select>
+            {(!modules || !Array.isArray(modules) || modules.length === 0) && (
+              <p className="text-xs text-yellow-400 mt-1">
+                No modules available. Create a module first.
+              </p>
+            )}
           </div>
 
-          {/* Image Preview */}
-          {formData.imageUrl && (
-            <div className="mt-4">
-              <p className="text-sm font-medium text-gray-300 mb-2">Preview:</p>
-              <div className="relative h-32 w-full bg-white/10 rounded-lg overflow-hidden">
-                <img
-                  src={formData.imageUrl}
-                  alt="Preview"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-                <div className="absolute inset-0 flex items-center justify-center bg-white/10">
-                  <PhotoIcon className="h-8 w-8 text-gray-400" />
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Chapter Type */}
+          <div>
+            <label htmlFor="type" className="block text-sm font-medium text-gray-300 mb-2">
+              Chapter Type *
+            </label>
+            <select
+              id="type"
+              name="type"
+              required
+              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={formData.type}
+              onChange={handleInputChange}
+            >
+              <option value="" className="bg-gray-900">Select a type</option>
+              <option value="TEXT" className="bg-gray-900">Text</option>
+              <option value="VIDEO" className="bg-gray-900">Video</option>
+              <option value="PDF" className="bg-gray-900">PDF</option>
+              <option value="QUIZ" className="bg-gray-900">Quiz</option>
+            </select>
+          </div>
+
+          {/* Order */}
+          <div>
+            <label htmlFor="order" className="block text-sm font-medium text-gray-300 mb-2">
+              Order *
+            </label>
+            <input
+              type="number"
+              id="order"
+              name="order"
+              required
+              min="1"
+              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Chapter order (1, 2, 3...)"
+              value={formData.order}
+              onChange={handleInputChange}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Chapter order within the module
+            </p>
+          </div>
+
+          {/* Status */}
+          <div>
+            <label htmlFor="status" className="block text-sm font-medium text-gray-300 mb-2">
+              Status *
+            </label>
+            <select
+              id="status"
+              name="status"
+              required
+              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={formData.status}
+              onChange={handleInputChange}
+            >
+              <option value="DRAFT" className="bg-gray-900">Draft - Hidden from students</option>
+              <option value="PUBLISHED" className="bg-gray-900">Published - Visible to students</option>
+            </select>
+          </div>
 
           {/* Form Actions */}
           <div className="flex items-center justify-end space-x-3 pt-4">
@@ -244,7 +304,7 @@ export default function CategoryModal({ category, onClose, onSuccess }: Category
             </button>
             <button
               type="submit"
-              disabled={loading || !formData.name || !formData.description}
+              disabled={loading || !formData.title || !formData.moduleId || !formData.type || !formData.order}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? (
@@ -253,7 +313,7 @@ export default function CategoryModal({ category, onClose, onSuccess }: Category
                   {isEditing ? 'Updating...' : 'Creating...'}
                 </>
               ) : (
-                isEditing ? 'Update Category' : 'Create Category'
+                isEditing ? 'Update Chapter' : 'Create Chapter'
               )}
             </button>
           </div>

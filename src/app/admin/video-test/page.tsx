@@ -1,347 +1,253 @@
 "use client";
 
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import AdminLayout from '@/components/admin/AdminLayout';
+import VideoModal from '@/components/admin/VideoModal';
 import { 
-  Upload, 
-  Video, 
-  AlertTriangle, 
-  CheckCircle,
-  RotateCw,
-  Play,
-  Trash2,
-  Edit3,
-  Loader,
-  ChevronDown,
-  ChevronRight,
-  FolderIcon,
-  BookOpenIcon
-} from 'lucide-react';
+  MagnifyingGlassIcon, 
+  PlusIcon, 
+  FunnelIcon,
+  VideoCameraIcon,
+  TrashIcon,
+  PencilIcon,
+  EyeIcon,
+  PlayIcon,
+  XMarkIcon
+} from '@heroicons/react/24/outline';
 
-// Types
-interface Category {
+interface Video {
   id: number;
-  name: string;
-  slug: string;
+  title: string;
+  description?: string;
+  videoUrl?: string;
+  fileName?: string;
+  fileSize?: string;
+  duration?: number; // in seconds
+  thumbnailUrl?: string;
+  isPublished: boolean;
+  orderIndex: number;
+  courseId: number;
+  moduleId?: number;
+  chapterId?: string;
+  createdAt: string;
+  course: {
+    title: string;
+  };
+  module?: {
+    title: string;
+  };
+  chapter?: {
+    title: string;
+  };
 }
 
 interface Course {
   id: number;
   title: string;
-  slug: string;
-  categoryId: number;
-  category?: {
-    name: string;
-  };
 }
 
 interface Module {
   id: number;
   title: string;
-  type: string;
-  orderIndex: number;
   courseId: number;
 }
 
-interface VideoModule {
-  id: number;
+interface Chapter {
+  id: string;
   title: string;
-  content?: string;
-  type: string;
-  orderIndex: number;
-  videoUrl: string;
-  videoSize: string;
-  videoDuration: number;
-  thumbnailUrl?: string;
-  courseId: number;
-  createdAt: string;
-  updatedAt: string;
+  moduleId: number;
 }
 
-interface Message {
-  text: string;
-  type: 'success' | 'error' | 'info';
-}
-
-// API class
-class VideoApi {
-  private getApiUrl(endpoint: string): string {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-    return `${baseUrl}/api${endpoint}`;
-  }
-
-  async testConnection() {
-    const response = await fetch(this.getApiUrl('/videos/test'), {
-      credentials: 'include'
-    });
-    return response.json();
-  }
-
-  async getCategories() {
-    const response = await fetch(this.getApiUrl('/categories/public'), {
-      credentials: 'include'
-    });
-    return response.json();
-  }
-
-  async getCoursesByCategory(categoryId: number) {
-    const response = await fetch(this.getApiUrl(`/courses?categoryId=${categoryId}`), {
-      credentials: 'include'
-    });
-    return response.json();
-  }
-
-  async getModulesByCourse(courseId: number) {
-    const response = await fetch(this.getApiUrl(`/courses/${courseId}`), {
-      credentials: 'include'
-    });
-    const data = await response.json();
-    return data.modules || [];
-  }
-
-  async uploadVideo(formData: FormData, onProgress?: (progress: number) => void) {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-
-      if (onProgress) {
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const progress = Math.round((e.loaded / e.total) * 100);
-            onProgress(progress);
-          }
-        });
-      }
-
-      xhr.onload = () => {
-        try {
-          const response = JSON.parse(xhr.responseText);
-          if (xhr.status === 201) {
-            resolve(response);
-          } else {
-            reject(new Error(response.error || 'Upload failed'));
-          }
-        } catch (error) {
-          reject(new Error('Invalid response from server'));
-        }
-      };
-
-      xhr.onerror = () => reject(new Error('Network error'));
-      xhr.ontimeout = () => reject(new Error('Upload timeout'));
-      xhr.timeout = 15 * 60 * 1000;
-
-      xhr.open('POST', this.getApiUrl('/videos/upload'));
-      xhr.withCredentials = true;
-      xhr.send(formData);
-    });
-  }
-
-  async getCourseVideos(courseId: number) {
-    const response = await fetch(this.getApiUrl(`/videos/course/${courseId}`), {
-      credentials: 'include'
-    });
-    return response.json();
-  }
-
-  async deleteVideo(videoId: number) {
-    const response = await fetch(this.getApiUrl(`/videos/${videoId}`), {
-      method: 'DELETE',
-      credentials: 'include'
-    });
-    return response.json();
-  }
-
-  getVideoStreamUrl(videoId: number): string {
-    return this.getApiUrl(`/videos/stream/${videoId}`);
-  }
-
-  getVideoThumbnailUrl(thumbnailPath: string): string | null {
-    if (!thumbnailPath) return null;
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-    const cleanPath = thumbnailPath.startsWith('/uploads/') 
-      ? thumbnailPath.slice(8) 
-      : thumbnailPath;
-    return `${baseUrl}/uploads/${cleanPath}`;
-  }
-}
-
-const videoApi = new VideoApi();
-
-export default function VideoTestPage() {
-  // State
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [message, setMessage] = useState<Message | null>(null);
-  const [videos, setVideos] = useState<VideoModule[]>([]);
-  const [loading, setLoading] = useState(false);
-  
-  // Hierarchical selection
-  const [categories, setCategories] = useState<Category[]>([]);
+export default function AdminVideosPage() {
+  const [videos, setVideos] = useState<Video[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState('');
-  const [selectedCourse, setSelectedCourse] = useState('');
-  const [selectedModule, setSelectedModule] = useState('');
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [filteredVideos, setFilteredVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [courseFilter, setCourseFilter] = useState<number | 'ALL'>('ALL');
+  const [moduleFilter, setModuleFilter] = useState<number | 'ALL'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'DRAFT'>('ALL');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingVideo, setEditingVideo] = useState<Video | null>(null);
+  const router = useRouter();
 
-  const showMessage = (text: string, type: Message['type'] = 'info') => {
-    setMessage({ text, type });
-    setTimeout(() => setMessage(null), 5000);
-  };
-
-  // Load categories on mount
   useEffect(() => {
-    loadCategories();
+    Promise.all([fetchVideos(), fetchCourses()]);
   }, []);
 
-  // Load courses when category changes
   useEffect(() => {
-    if (selectedCategory) {
-      loadCourses(parseInt(selectedCategory));
-    } else {
-      setCourses([]);
-      setSelectedCourse('');
-    }
-  }, [selectedCategory]);
+    filterVideos();
+  }, [videos, searchTerm, courseFilter, moduleFilter, statusFilter]);
 
-  // Load modules when course changes
   useEffect(() => {
-    if (selectedCourse) {
-      loadModules(parseInt(selectedCourse));
-      loadVideos();
+    if (courseFilter !== 'ALL') {
+      loadModules(courseFilter as number);
     } else {
       setModules([]);
-      setSelectedModule('');
-      setVideos([]);
+      setModuleFilter('ALL');
     }
-  }, [selectedCourse]);
+  }, [courseFilter]);
 
-  const loadCategories = async () => {
+  useEffect(() => {
+    if (moduleFilter !== 'ALL') {
+      loadChapters(moduleFilter as number);
+    } else {
+      setChapters([]);
+    }
+  }, [moduleFilter]);
+
+  const fetchVideos = async () => {
     try {
-      const data = await videoApi.getCategories();
-      setCategories(data);
-    } catch (error) {
-      showMessage('Failed to load categories', 'error');
-    }
-  };
-
-  const loadCourses = async (categoryId: number) => {
-    try {
-      const data = await videoApi.getCoursesByCategory(categoryId);
-      setCourses(data);
-      setSelectedCourse('');
-    } catch (error) {
-      showMessage('Failed to load courses', 'error');
-    }
-  };
-
-  const loadModules = async (courseId: number) => {
-    try {
-      const data = await videoApi.getModulesByCourse(courseId);
-      setModules(data);
-      setSelectedModule('');
-    } catch (error) {
-      showMessage('Failed to load modules', 'error');
-    }
-  };
-
-  const testConnection = async () => {
-    try {
-      const response = await videoApi.testConnection();
-      showMessage(`Backend connected: ${response.message}`, 'success');
-    } catch (error) {
-      showMessage(`Backend connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
-    }
-  };
-
-  const handleUpload = async () => {
-    const videoFile = fileInputRef.current?.files?.[0];
-    const thumbnailFile = (document.getElementById('thumbnail') as HTMLInputElement)?.files?.[0];
-    const title = (document.getElementById('title') as HTMLInputElement)?.value;
-    const content = (document.getElementById('content') as HTMLTextAreaElement)?.value;
-    
-    if (!videoFile) {
-      showMessage('Please select a video file', 'error');
-      return;
-    }
-
-    if (!title?.trim()) {
-      showMessage('Please enter a video title', 'error');
-      return;
-    }
-
-    if (!selectedCourse) {
-      showMessage('Please select a course', 'error');
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadProgress(0);
-
-    try {
-      const formData = new FormData();
-      formData.append('video', videoFile);
-      formData.append('title', title);
-      formData.append('courseId', selectedCourse);
-      formData.append('content', content || '');
+      setLoading(true);
+      setError(null);
       
-      if (selectedModule) {
-        formData.append('moduleId', selectedModule);
-      }
-      
-      if (thumbnailFile) {
-        formData.append('thumbnail', thumbnailFile);
-      }
-
-      await videoApi.uploadVideo(formData, (progress) => {
-        setUploadProgress(progress);
+      const response = await fetch('http://localhost:5000/api/videos/admin/all', {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
 
-      showMessage(`Video uploaded successfully: ${title}`, 'success');
-      
-      // Reset form
-      (document.getElementById('title') as HTMLInputElement).value = '';
-      (document.getElementById('content') as HTMLTextAreaElement).value = '';
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      (document.getElementById('thumbnail') as HTMLInputElement).value = '';
-      
-      await loadVideos();
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-    } catch (error) {
-      showMessage(`Upload error: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
-    } finally {
-      setIsUploading(false);
-      setUploadProgress(0);
-    }
-  };
-
-  const loadVideos = async () => {
-    if (!selectedCourse) return;
-    
-    setLoading(true);
-    try {
-      const response = await videoApi.getCourseVideos(parseInt(selectedCourse));
-      setVideos(response.videos || []);
-      showMessage(`Loaded ${response.videos?.length || 0} videos`, 'success');
-    } catch (error) {
-      showMessage(`Failed to load videos: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      const data = await response.json();
+      setVideos(data);
+      
+    } catch (err: unknown) {
+      console.error('Error fetching videos:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch videos';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteVideo = async (videoId: number, videoTitle: string) => {
-    if (!confirm(`Are you sure you want to delete "${videoTitle}"?`)) return;
-
+  const fetchCourses = async () => {
     try {
-      await videoApi.deleteVideo(videoId);
-      showMessage(`Video "${videoTitle}" deleted successfully`, 'success');
-      await loadVideos();
-    } catch (error) {
-      showMessage(`Failed to delete video: ${error instanceof Error ? error.message : 'Unknown error'}`, 'error');
+      const response = await fetch('http://localhost:5000/api/admin/courses', {
+        credentials: 'include',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setCourses(data);
+      }
+    } catch (err) {
+      console.error('Error fetching courses:', err);
     }
   };
 
-  const formatFileSize = (bytes: string): string => {
+  const loadModules = async (courseId: number) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/courses/${courseId}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const courseData = await response.json();
+        const modules = courseData.course?.modules || courseData.modules || [];
+        setModules(modules);
+      }
+    } catch (error) {
+      console.error('Error loading modules:', error);
+      setModules([]);
+    }
+  };
+
+  const loadChapters = async (moduleId: number) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/admin/modules/${moduleId}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const moduleData = await response.json();
+        setChapters(moduleData.chapters || []);
+      }
+    } catch (error) {
+      console.error('Error loading chapters:', error);
+      setChapters([]);
+    }
+  };
+
+  const filterVideos = () => {
+    let filtered = videos;
+
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(video => 
+        video.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        video.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        video.course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        video.module?.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        video.chapter?.title.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Course filter
+    if (courseFilter !== 'ALL') {
+      filtered = filtered.filter(video => video.courseId === courseFilter);
+    }
+
+    // Module filter
+    if (moduleFilter !== 'ALL') {
+      filtered = filtered.filter(video => video.moduleId === moduleFilter);
+    }
+
+    // Status filter
+    if (statusFilter !== 'ALL') {
+      filtered = filtered.filter(video => 
+        statusFilter === 'PUBLISHED' ? video.isPublished : !video.isPublished
+      );
+    }
+
+    setFilteredVideos(filtered);
+  };
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setCourseFilter('ALL');
+    setModuleFilter('ALL');
+    setStatusFilter('ALL');
+  };
+
+  const hasActiveFilters = searchTerm || courseFilter !== 'ALL' || moduleFilter !== 'ALL' || statusFilter !== 'ALL';
+
+  const handleDeleteVideo = async (videoId: number) => {
+    if (!confirm('Are you sure you want to delete this video? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      const response = await fetch(`http://localhost:5000/api/videos/${videoId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete video');
+      }
+
+      await fetchVideos();
+      
+    } catch (err: unknown) {
+      console.error('Error deleting video:', err);
+      setError('Failed to delete video');
+      setTimeout(() => setError(null), 5000);
+    }
+  };
+
+  const formatFileSize = (bytes?: string): string => {
+    if (!bytes) return '0 B';
     const num = parseInt(bytes);
     if (!num) return '0 B';
     const k = 1024;
@@ -350,305 +256,379 @@ export default function VideoTestPage() {
     return parseFloat((num / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const formatDuration = (seconds: number): string => {
+  const formatDuration = (seconds?: number): string => {
     if (!seconds) return '0:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <span className="text-white">Loading videos...</span>
+          </div>
+        </div>
+      </AdminLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AdminLayout>
+        <div className="text-center py-12">
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6 max-w-md mx-auto">
+            <div className="text-red-400 mb-4">⚠️ {error}</div>
+            <button
+              onClick={fetchVideos}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      </AdminLayout>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <AdminLayout>
+      <div className="space-y-6">
         {/* Header */}
-        <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-xl p-6 shadow-xl">
-          <h1 className="text-3xl font-bold text-white mb-2">Video Management System</h1>
-          <p className="text-gray-300">Manage course videos with hierarchical organization</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+          <div className="mb-4 sm:mb-0">
+            <h1 className="text-3xl font-bold text-white mb-2">Video Management</h1>
+            <p className="text-gray-400">Manage course videos with hierarchical organization</p>
+          </div>
+          
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+          >
+            <PlusIcon className="h-4 w-4 mr-2" />
+            Add Video
+          </button>
         </div>
 
-        {/* Hierarchical Selection */}
-        <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-xl p-6 shadow-xl">
-          <h2 className="text-xl font-semibold text-white mb-6">Select Content Location</h2>
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Total Videos</p>
+                <p className="text-2xl font-bold text-white">{videos.length}</p>
+              </div>
+              <VideoCameraIcon className="w-8 h-8 text-blue-400" />
+            </div>
+          </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            {/* Category Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                <FolderIcon className="w-4 h-4 inline mr-1" />
-                Category (Niche)
-              </label>
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
-              >
-                <option value="" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
-                  Select Category
-                </option>
-                {categories.map(category => (
-                  <option 
-                    key={category.id} 
-                    value={category.id}
-                    style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
-                  >
-                    {category.name}
-                  </option>
-                ))}
-              </select>
+          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Published</p>
+                <p className="text-2xl font-bold text-white">{videos.filter(v => v.isPublished).length}</p>
+              </div>
+              <EyeIcon className="w-8 h-8 text-green-400" />
+            </div>
+          </div>
+          
+          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Draft</p>
+                <p className="text-2xl font-bold text-white">{videos.filter(v => !v.isPublished).length}</p>
+              </div>
+              <PencilIcon className="w-8 h-8 text-yellow-400" />
+            </div>
+          </div>
+          
+          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Total Duration</p>
+                <p className="text-2xl font-bold text-white">
+                  {formatDuration(videos.reduce((sum, video) => sum + (video.duration || 0), 0))}
+                </p>
+              </div>
+              <PlayIcon className="w-8 h-8 text-purple-400" />
+            </div>
+          </div>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
+          <div className="flex flex-col gap-4">
+            {/* Search */}
+            <div className="relative">
+              <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search videos by title, description, course, module, or chapter..."
+                className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
             </div>
 
-            {/* Course Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                <BookOpenIcon className="w-4 h-4 inline mr-1" />
-                Course
-              </label>
-              <select
-                value={selectedCourse}
-                onChange={(e) => setSelectedCourse(e.target.value)}
-                disabled={!selectedCategory}
-                className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
-              >
-                <option value="" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
-                  Select Course
-                </option>
-                {courses.map(course => (
-                  <option 
-                    key={course.id} 
-                    value={course.id}
-                    style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
-                  >
-                    {course.title}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Filters Row */}
+            <div className="flex flex-wrap gap-4">
+              {/* Course Filter */}
+              <div className="relative">
+                <FunnelIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <select
+                  className="pl-10 pr-8 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[150px]"
+                  value={courseFilter}
+                  onChange={(e) => setCourseFilter(e.target.value === 'ALL' ? 'ALL' : parseInt(e.target.value))}
+                  style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
+                >
+                  <option value="ALL" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>All Courses</option>
+                  {courses.map(course => (
+                    <option key={course.id} value={course.id} style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
+                      {course.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            {/* Module Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                <Video className="w-4 h-4 inline mr-1" />
-                Module (Optional)
-              </label>
-              <select
-                value={selectedModule}
-                onChange={(e) => setSelectedModule(e.target.value)}
-                disabled={!selectedCourse}
-                className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
-              >
-                <option value="" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
-                  Select Module (Optional)
-                </option>
-                {modules.map(module => (
-                  <option 
-                    key={module.id} 
-                    value={module.id}
-                    style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
-                  >
-                    {module.title}
-                  </option>
-                ))}
-              </select>
+              {/* Module Filter */}
+              <div className="relative">
+                <select
+                  className="px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[150px]"
+                  value={moduleFilter}
+                  onChange={(e) => setModuleFilter(e.target.value === 'ALL' ? 'ALL' : parseInt(e.target.value))}
+                  disabled={courseFilter === 'ALL'}
+                  style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
+                >
+                  <option value="ALL" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>All Modules</option>
+                  {modules.map(module => (
+                    <option key={module.id} value={module.id} style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
+                      {module.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div className="relative">
+                <select
+                  className="px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[130px]"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'PUBLISHED' | 'DRAFT')}
+                  style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
+                >
+                  <option value="ALL" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>All Status</option>
+                  <option value="PUBLISHED" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Published</option>
+                  <option value="DRAFT" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Draft</option>
+                </select>
+              </div>
             </div>
           </div>
 
-          {/* Selection Summary */}
-          <div className="bg-gray-800 bg-opacity-50 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-gray-300 mb-2">Selected Path:</h3>
-            <div className="flex items-center space-x-2 text-sm text-white">
-              <span>{selectedCategory ? categories.find(c => c.id.toString() === selectedCategory)?.name : 'No Category'}</span>
-              <ChevronRight className="w-4 h-4 text-gray-400" />
-              <span>{selectedCourse ? courses.find(c => c.id.toString() === selectedCourse)?.title : 'No Course'}</span>
-              {selectedModule && (
+          {/* Results Summary & Clear Filters */}
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <div className="text-gray-400">
+              Showing {filteredVideos.length} of {videos.length} videos
+              {searchTerm && (
+                <span className="ml-2 text-blue-400">
+                  • Search: "{searchTerm}"
+                </span>
+              )}
+              {courseFilter !== 'ALL' && (
+                <span className="ml-2 text-blue-400">
+                  • Course: {courses.find(c => c.id === courseFilter)?.title}
+                </span>
+              )}
+              {moduleFilter !== 'ALL' && (
+                <span className="ml-2 text-blue-400">
+                  • Module: {modules.find(m => m.id === moduleFilter)?.title}
+                </span>
+              )}
+              {statusFilter !== 'ALL' && (
+                <span className="ml-2 text-blue-400">
+                  • Status: {statusFilter}
+                </span>
+              )}
+            </div>
+            
+            {hasActiveFilters && (
+              <button
+                onClick={clearAllFilters}
+                className="flex items-center gap-1 text-blue-400 hover:text-blue-300 underline"
+              >
+                <XMarkIcon className="h-4 w-4" />
+                Clear all filters
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Videos Table */}
+        {filteredVideos.length === 0 ? (
+          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-12 text-center">
+            <div className="text-gray-400 mb-4">
+              {hasActiveFilters ? (
                 <>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                  <span>{modules.find(m => m.id.toString() === selectedModule)?.title}</span>
+                  <MagnifyingGlassIcon className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-semibold mb-2">No videos found</h3>
+                  <p className="mb-4">No videos match your current filters.</p>
+                  <button
+                    onClick={clearAllFilters}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Clear Filters
+                  </button>
+                </>
+              ) : (
+                <>
+                  <VideoCameraIcon className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-semibold mb-2">No videos yet</h3>
+                  <p className="mb-4">Upload your first video to get started.</p>
+                  <button
+                    onClick={() => setIsModalOpen(true)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Add First Video
+                  </button>
                 </>
               )}
             </div>
           </div>
-        </div>
-
-        {/* Upload Section */}
-        {selectedCourse && (
-          <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-xl p-6 shadow-xl">
-            <h2 className="text-xl font-semibold text-white mb-6">Upload Video</h2>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Video Title</label>
-                <input
-                  id="title"
-                  type="text"
-                  placeholder="Enter video title"
-                  className="w-full p-3 bg-white bg-opacity-20 backdrop-blur-sm border border-gray-300 border-opacity-30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
-                <textarea
-                  id="content"
-                  placeholder="Enter video description"
-                  rows={3}
-                  className="w-full p-3 bg-white bg-opacity-20 backdrop-blur-sm border border-gray-300 border-opacity-30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Video File</label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="video/*"
-                  className="w-full p-3 bg-white bg-opacity-20 backdrop-blur-sm border border-gray-300 border-opacity-30 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Thumbnail (Optional)</label>
-                <input
-                  id="thumbnail"
-                  type="file"
-                  accept="image/*"
-                  className="w-full p-3 bg-white bg-opacity-20 backdrop-blur-sm border border-gray-300 border-opacity-30 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700"
-                />
-              </div>
-
-              <button
-                onClick={handleUpload}
-                disabled={isUploading}
-                className="w-full flex items-center justify-center px-4 py-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-500 text-white rounded-lg transition-colors font-medium"
-              >
-                {isUploading ? (
-                  <>
-                    <Loader className="w-5 h-5 mr-2 animate-spin" />
-                    Uploading... {uploadProgress}%
-                  </>
-                ) : (
-                  <>
-                    <Upload className="w-5 h-5 mr-2" />
-                    Upload Video
-                  </>
-                )}
-              </button>
-
-              {isUploading && (
-                <div className="w-full bg-gray-700 rounded-full h-2">
-                  <div
-                    className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Message Display */}
-        {message && (
-          <div className={`p-4 rounded-xl flex items-center backdrop-blur-lg ${
-            message.type === 'success' ? 'bg-green-500 bg-opacity-20 text-green-300' :
-            message.type === 'error' ? 'bg-red-500 bg-opacity-20 text-red-300' :
-            'bg-blue-500 bg-opacity-20 text-blue-300'
-          }`}>
-            {message.type === 'success' ? <CheckCircle className="w-5 h-5 mr-2" /> :
-             message.type === 'error' ? <AlertTriangle className="w-5 h-5 mr-2" /> :
-             <Video className="w-5 h-5 mr-2" />}
-            {message.text}
-          </div>
-        )}
-
-        {/* Videos List */}
-        {selectedCourse && (
-          <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-xl shadow-xl">
-            <div className="p-6 border-b border-gray-300 border-opacity-20">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-white">Course Videos</h2>
-                <button
-                  onClick={loadVideos}
-                  disabled={loading}
-                  className="flex items-center px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-500 text-white rounded-lg transition-colors"
-                >
-                  <RotateCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                  {loading ? 'Loading...' : 'Refresh Videos'}
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6">
-              {videos.length === 0 ? (
-                <div className="text-center py-12">
-                  <Video className="w-16 h-16 mx-auto text-gray-400 mb-4" />
-                  <p className="text-gray-400 text-lg">No videos uploaded yet</p>
-                  <p className="text-gray-500 text-sm">Upload your first video to get started</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {videos.map((video) => (
-                    <div key={video.id} className="bg-white bg-opacity-10 backdrop-blur-sm rounded-lg p-4 hover:bg-opacity-15 transition-all">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start space-x-4 flex-1">
-                          <div className="w-16 h-12 bg-gray-700 rounded flex items-center justify-center">
+        ) : (
+          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-white/5 border-b border-white/10">
+                  <tr>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Video</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Course/Module/Chapter</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Duration</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Status</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Created</th>
+                    <th className="px-6 py-4 text-right text-sm font-medium text-gray-300">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                  {filteredVideos.map((video) => (
+                    <tr key={video.id} className="hover:bg-white/5 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="flex items-start gap-3">
+                          <div className="relative">
                             {video.thumbnailUrl ? (
-                              <img
-                                src={videoApi.getVideoThumbnailUrl(video.thumbnailUrl) || ''}
-                                alt="Thumbnail"
-                                className="w-full h-full object-cover rounded"
+                              <img 
+                                src={video.thumbnailUrl} 
+                                alt={video.title}
+                                className="w-16 h-12 object-cover rounded-lg"
                               />
                             ) : (
-                              <Video className="w-6 h-6 text-gray-400" />
+                              <div className="w-16 h-12 bg-gray-700 rounded-lg flex items-center justify-center">
+                                <VideoCameraIcon className="w-6 h-6 text-gray-400" />
+                              </div>
                             )}
-                          </div>
-                          <div className="flex-1">
-                            <h3 className="font-medium text-white">{video.title}</h3>
-                            <p className="text-gray-300 text-sm mt-1">{video.content}</p>
-                            <div className="flex items-center space-x-4 mt-2 text-xs text-gray-400">
-                              <span>Duration: {formatDuration(video.videoDuration)}</span>
-                              <span>Size: {formatFileSize(video.videoSize)}</span>
-                              <span>Order: {video.orderIndex}</span>
-                              <span>
-                                Uploaded: {new Date(video.createdAt).toLocaleDateString()}
-                              </span>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <PlayIcon className="w-4 h-4 text-white drop-shadow-lg" />
                             </div>
                           </div>
+                          <div className="flex-1">
+                            <div className="font-medium text-white">{video.title}</div>
+                            {video.description && (
+                              <div className="text-sm text-gray-400 line-clamp-2 max-w-xs">
+                                {video.description}
+                              </div>
+                            )}
+                            {video.fileName && (
+                              <div className="text-xs text-gray-500 mt-1">
+                                {video.fileName} ({formatFileSize(video.fileSize)})
+                              </div>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          <a
-                            href={videoApi.getVideoStreamUrl(video.id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-500 hover:bg-opacity-20 rounded transition-colors"
-                            title="View Video"
-                          >
-                            <Play className="w-4 h-4" />
-                          </a>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm">
+                          <div className="text-white">{video.course.title}</div>
+                          {video.module && (
+                            <div className="text-gray-400">📁 {video.module.title}</div>
+                          )}
+                          {video.chapter && (
+                            <div className="text-gray-500">📄 {video.chapter.title}</div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-white">
+                        {formatDuration(video.duration)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          video.isPublished 
+                            ? 'bg-green-500/20 text-green-400' 
+                            : 'bg-yellow-500/20 text-yellow-400'
+                        }`}>
+                          {video.isPublished ? 'Published' : 'Draft'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-400">
+                        {new Date(video.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {video.videoUrl && (
+                            <a
+                              href={video.videoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-500/20 rounded transition-colors"
+                              title="View Video"
+                            >
+                              <EyeIcon className="w-4 h-4" />
+                            </a>
+                          )}
                           <button
-                            className="p-2 text-gray-400 hover:text-green-400 hover:bg-green-500 hover:bg-opacity-20 rounded transition-colors"
-                            title="Edit Video"
+                            onClick={() => {
+                              setEditingVideo(video);
+                              setIsModalOpen(true);
+                            }}
+                            className="p-2 text-gray-400 hover:text-yellow-400 hover:bg-yellow-500/20 rounded transition-colors"
+                            title="Edit"
                           >
-                            <Edit3 className="w-4 h-4" />
+                            <PencilIcon className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDeleteVideo(video.id, video.title)}
-                            className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500 hover:bg-opacity-20 rounded transition-colors"
-                            title="Delete Video"
+                            onClick={() => handleDeleteVideo(video.id)}
+                            className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/20 rounded transition-colors"
+                            title="Delete"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <TrashIcon className="w-4 h-4" />
                           </button>
                         </div>
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   ))}
-                </div>
-              )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
+
+        {/* Video Modal */}
+        {isModalOpen && (
+          <VideoModal
+            video={editingVideo}
+            courses={courses}
+            onClose={() => {
+              setIsModalOpen(false);
+              setEditingVideo(null);
+            }}
+            onSuccess={() => {
+              setIsModalOpen(false);
+              setEditingVideo(null);
+              fetchVideos();
+            }}
+          />
+        )}
       </div>
-    </div>
+    </AdminLayout>
   );
 }

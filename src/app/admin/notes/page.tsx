@@ -1,4 +1,3 @@
-// frontend/src/app/admin/notes/page.tsx
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -31,11 +30,15 @@ interface Note {
   orderIndex: number;
   courseId: number;
   moduleId?: number;
+  chapterId?: number; // Added chapter support
   createdAt: string;
   course: {
     title: string;
   };
   module?: {
+    title: string;
+  };
+  chapter?: { // Added chapter support
     title: string;
   };
 }
@@ -51,15 +54,23 @@ interface Module {
   courseId: number;
 }
 
+interface Chapter {
+  id: number;
+  title: string;
+  moduleId: number;
+}
+
 export default function AdminNotesPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [filteredNotes, setFilteredNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [courseFilter, setCourseFilter] = useState<number | 'ALL'>('ALL');
+  const [moduleFilter, setModuleFilter] = useState<number | 'ALL'>('ALL');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'PDF' | 'DOC' | 'TXT'>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'PUBLISHED' | 'DRAFT'>('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -72,7 +83,24 @@ export default function AdminNotesPage() {
 
   useEffect(() => {
     filterNotes();
-  }, [notes, searchTerm, courseFilter, typeFilter, statusFilter]);
+  }, [notes, searchTerm, courseFilter, moduleFilter, typeFilter, statusFilter]);
+
+  useEffect(() => {
+    if (courseFilter !== 'ALL') {
+      loadModules(courseFilter as number);
+    } else {
+      setModules([]);
+      setModuleFilter('ALL');
+    }
+  }, [courseFilter]);
+
+  useEffect(() => {
+    if (moduleFilter !== 'ALL') {
+      loadChapters(moduleFilter as number);
+    } else {
+      setChapters([]);
+    }
+  }, [moduleFilter]);
 
   const fetchNotes = async () => {
     try {
@@ -120,6 +148,38 @@ export default function AdminNotesPage() {
     }
   };
 
+  const loadModules = async (courseId: number) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/courses/${courseId}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const courseData = await response.json();
+        setModules(courseData.modules || []);
+      }
+    } catch (error) {
+      console.error('Error loading modules:', error);
+      setModules([]);
+    }
+  };
+
+  const loadChapters = async (moduleId: number) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/admin/modules/${moduleId}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const moduleData = await response.json();
+        setChapters(moduleData.chapters || []);
+      }
+    } catch (error) {
+      console.error('Error loading chapters:', error);
+      setChapters([]);
+    }
+  };
+
   const filterNotes = () => {
     let filtered = notes;
 
@@ -128,13 +188,20 @@ export default function AdminNotesPage() {
       filtered = filtered.filter(note => 
         note.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
         note.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        note.course.title.toLowerCase().includes(searchTerm.toLowerCase())
+        note.course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        note.module?.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        note.chapter?.title.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
     // Course filter
     if (courseFilter !== 'ALL') {
       filtered = filtered.filter(note => note.courseId === courseFilter);
+    }
+
+    // Module filter
+    if (moduleFilter !== 'ALL') {
+      filtered = filtered.filter(note => note.moduleId === moduleFilter);
     }
 
     // Type filter
@@ -157,11 +224,12 @@ export default function AdminNotesPage() {
   const clearAllFilters = () => {
     setSearchTerm('');
     setCourseFilter('ALL');
+    setModuleFilter('ALL');
     setTypeFilter('ALL');
     setStatusFilter('ALL');
   };
 
-  const hasActiveFilters = searchTerm || courseFilter !== 'ALL' || typeFilter !== 'ALL' || statusFilter !== 'ALL';
+  const hasActiveFilters = searchTerm || courseFilter !== 'ALL' || moduleFilter !== 'ALL' || typeFilter !== 'ALL' || statusFilter !== 'ALL';
 
   const handleDeleteNote = async (noteId: number) => {
     if (!confirm('Are you sure you want to delete this note? This action cannot be undone.')) {
@@ -307,65 +375,86 @@ export default function AdminNotesPage() {
 
         {/* Search and Filters */}
         <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col gap-4">
             {/* Search */}
-            <div className="relative flex-1">
+            <div className="relative">
               <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
-                placeholder="Search notes by title, description, or course..."
+                placeholder="Search notes by title, description, course, module, or chapter..."
                 className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
 
-            {/* Course Filter */}
-            <div className="relative">
-              <FunnelIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <select
-                className="pl-10 pr-8 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[150px]"
-                value={courseFilter}
-                onChange={(e) => setCourseFilter(e.target.value === 'ALL' ? 'ALL' : parseInt(e.target.value))}
-                style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
-              >
-                <option value="ALL" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>All Courses</option>
-                {courses.map(course => (
-                  <option key={course.id} value={course.id} style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
-                    {course.title}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {/* Filters Row */}
+            <div className="flex flex-wrap gap-4">
+              {/* Course Filter */}
+              <div className="relative">
+                <FunnelIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <select
+                  className="pl-10 pr-8 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[150px]"
+                  value={courseFilter}
+                  onChange={(e) => setCourseFilter(e.target.value === 'ALL' ? 'ALL' : parseInt(e.target.value))}
+                  style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
+                >
+                  <option value="ALL" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>All Courses</option>
+                  {courses.map(course => (
+                    <option key={course.id} value={course.id} style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
+                      {course.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            {/* Type Filter */}
-            <div className="relative">
-              <DocumentIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-              <select
-                className="pl-10 pr-8 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[120px]"
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value as 'ALL' | 'PDF' | 'DOC' | 'TXT')}
-                style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
-              >
-                <option value="ALL" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>All Types</option>
-                <option value="PDF" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>PDF</option>
-                <option value="DOC" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>DOC</option>
-                <option value="TXT" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>TXT</option>
-              </select>
-            </div>
+              {/* Module Filter */}
+              <div className="relative">
+                <select
+                  className="px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[150px]"
+                  value={moduleFilter}
+                  onChange={(e) => setModuleFilter(e.target.value === 'ALL' ? 'ALL' : parseInt(e.target.value))}
+                  disabled={courseFilter === 'ALL'}
+                  style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
+                >
+                  <option value="ALL" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>All Modules</option>
+                  {modules.map(module => (
+                    <option key={module.id} value={module.id} style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
+                      {module.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            {/* Status Filter */}
-            <div className="relative">
-              <select
-                className="px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[130px]"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'PUBLISHED' | 'DRAFT')}
-                style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
-              >
-                <option value="ALL" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>All Status</option>
-                <option value="PUBLISHED" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Published</option>
-                <option value="DRAFT" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Draft</option>
-              </select>
+              {/* Type Filter */}
+              <div className="relative">
+                <DocumentIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <select
+                  className="pl-10 pr-8 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[120px]"
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as 'ALL' | 'PDF' | 'DOC' | 'TXT')}
+                  style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
+                >
+                  <option value="ALL" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>All Types</option>
+                  <option value="PDF" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>PDF</option>
+                  <option value="DOC" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>DOC</option>
+                  <option value="TXT" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>TXT</option>
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div className="relative">
+                <select
+                  className="px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none min-w-[130px]"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as 'ALL' | 'PUBLISHED' | 'DRAFT')}
+                  style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
+                >
+                  <option value="ALL" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>All Status</option>
+                  <option value="PUBLISHED" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Published</option>
+                  <option value="DRAFT" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>Draft</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -381,6 +470,11 @@ export default function AdminNotesPage() {
               {courseFilter !== 'ALL' && (
                 <span className="ml-2 text-blue-400">
                   • Course: {courses.find(c => c.id === courseFilter)?.title}
+                </span>
+              )}
+              {moduleFilter !== 'ALL' && (
+                <span className="ml-2 text-blue-400">
+                  • Module: {modules.find(m => m.id === moduleFilter)?.title}
                 </span>
               )}
               {typeFilter !== 'ALL' && (
@@ -445,7 +539,7 @@ export default function AdminNotesPage() {
                 <thead className="bg-white/5 border-b border-white/10">
                   <tr>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Note</th>
-                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Course</th>
+                    <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Course/Module/Chapter</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Type</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Status</th>
                     <th className="px-6 py-4 text-left text-sm font-medium text-gray-300">Downloads</th>
@@ -475,10 +569,15 @@ export default function AdminNotesPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-sm text-white">{note.course.title}</div>
-                        {note.module && (
-                          <div className="text-xs text-gray-400">{note.module.title}</div>
-                        )}
+                        <div className="text-sm">
+                          <div className="text-white">{note.course.title}</div>
+                          {note.module && (
+                            <div className="text-gray-400">📁 {note.module.title}</div>
+                          )}
+                          {note.chapter && (
+                            <div className="text-gray-500">📄 {note.chapter.title}</div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
