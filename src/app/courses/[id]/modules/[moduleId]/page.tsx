@@ -1,326 +1,335 @@
-// frontend/src/app/courses/[id]/modules/[moduleId]/page.tsx
-"use client";
+// app/courses/[id]/modules/[moduleId]/page.tsx
+'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { 
-  ArrowLeftIcon,
-  PlayIcon,
-  ClockIcon,
-  BookOpenIcon,
-  LockClosedIcon
-} from '@heroicons/react/24/outline';
-import ModulePurchase from '@/components/ModulePurchase';
-import { toast } from 'sonner';
+import { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, Play, CheckCircle, Clock, Lock, Video, FileText, FileQuestion, ChevronRight } from 'lucide-react';
+import ProgressBar from '@/components/ui/ProgressBar';
+import { useCourseData } from '@/hooks/useCourseData';
+import { useProgress } from '@/hooks/useProgress';
 
-interface Module {
-  id: number;
+interface Chapter {
+  id: string;
   title: string;
-  content?: string;
-  price: number;
-  duration?: number;
-  isFree: boolean;
-  isPublished: boolean;
-  videoUrl?: string;
-  course: {
-    id: number;
-    title: string;
-  };
+  description: string;
+  content: string;
+  videoUrl: string;
+  duration: number;
+  order: number;
+  type: 'VIDEO' | 'TEXT' | 'PDF' | 'QUIZ';
+  moduleId: number;
 }
 
-interface ModulePageData {
-  module: Module;
-  isOwned: boolean;
-  canPurchase: boolean;
+interface ChapterProgress {
+  chapterId: string;
+  isCompleted: boolean;
+  watchTime: number;
+  completionPercentage: number;
 }
 
-export default function ModulePage() {
-  const router = useRouter();
+export default function ModuleDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const courseId = params.id as string;
-  const moduleId = params.moduleId as string;
-  
-  const [moduleData, setModuleData] = useState<ModulePageData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const moduleId = parseInt(params.moduleId as string);
 
-  useEffect(() => {
-    fetchModuleData();
-  }, [moduleId]);
+  const { course, loading, error } = useCourseData(courseId);
+  const { progress } = useProgress(courseId);
 
-  const fetchModuleData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
 
-      const response = await fetch(`http://localhost:5000/api/payment/modules/${moduleId}`, {
-        credentials: 'include'
-      });
+  // Get current module
+  const currentModule = course?.modules.find(m => m.id === moduleId);
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          router.push('/login');
-          return;
-        }
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+  // Get chapter progress
+  const getChapterProgress = (chapterId: string): ChapterProgress | undefined => {
+    return progress.find(p => p.chapterId === chapterId);
+  };
 
-      const data = await response.json();
-      setModuleData(data);
+  // Calculate module progress
+  const calculateModuleProgress = (): number => {
+    if (!currentModule || currentModule.chapters.length === 0) return 0;
+    
+    const totalProgress = currentModule.chapters.reduce((sum, chapter) => {
+      const chapterProgress = getChapterProgress(chapter.id);
+      return sum + (chapterProgress?.completionPercentage || 0);
+    }, 0);
+    
+    return totalProgress / currentModule.chapters.length;
+  };
 
-    } catch (err: unknown) {
-      console.error('Error fetching module data:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load module';
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
+  // Format duration
+  const formatDuration = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  // Get chapter icon
+  const getChapterIcon = (chapter: Chapter) => {
+    switch (chapter.type) {
+      case 'VIDEO':
+        return <Video className="h-5 w-5" />;
+      case 'TEXT':
+        return <FileText className="h-5 w-5" />;
+      case 'QUIZ':
+        return <FileQuestion className="h-5 w-5" />;
+      default:
+        return <FileText className="h-5 w-5" />;
     }
   };
 
-  const handlePurchaseSuccess = () => {
-    // Refresh module data after successful purchase
-    fetchModuleData();
+  // Navigate to learning interface
+  const startLearning = (chapterId?: string) => {
+    const firstChapter = chapterId || currentModule?.chapters[0]?.id;
+    if (firstChapter) {
+      router.push(`/courses/${courseId}/learn?chapter=${firstChapter}`);
+    }
+  };
+
+  // Check if chapter is accessible
+  const isChapterAccessible = (chapter: Chapter): boolean => {
+    // If module is free, all chapters are accessible
+    if (currentModule?.isFree) return true;
+    
+    // Add your logic for paid content access
+    return true; // Placeholder
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] flex items-center justify-center">
-        <div className="flex items-center gap-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-          <span className="text-white">Loading module...</span>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading module...</p>
         </div>
       </div>
     );
   }
 
-  if (error || !moduleData) {
+  if (error || !course || !currentModule) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-6 max-w-md mx-auto">
-            <div className="text-red-400 mb-4">⚠️ {error || 'Module not found'}</div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Module Not Found</h1>
+          <p className="text-gray-600 mb-4">The module you're looking for doesn't exist or you don't have access.</p>
+          <button 
+            onClick={() => router.push(`/courses/${courseId}`)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Back to Course
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const moduleProgress = calculateModuleProgress();
+  const completedChapters = currentModule.chapters.filter(chapter => 
+    getChapterProgress(chapter.id)?.isCompleted
+  ).length;
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => router.push(`/courses/${courseId}`)}
+                className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </button>
+              <div>
+                <h1 className="text-lg font-semibold text-gray-900">{currentModule.title}</h1>
+                <p className="text-sm text-gray-500">{course.title}</p>
+              </div>
+            </div>
+            
             <button
-              onClick={() => router.back()}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              onClick={() => startLearning()}
+              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-2"
             >
-              Go Back
+              <Play className="h-4 w-4" />
+              <span>Continue Learning</span>
             </button>
           </div>
         </div>
-      </div>
-    );
-  }
+      </header>
 
-  const { module, isOwned, canPurchase } = moduleData;
+      {/* Main content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Module info sidebar */}
+          <div className="lg:col-span-1">
+            <div className="bg-white rounded-lg shadow-sm p-6 sticky top-8">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">{currentModule.title}</h2>
+              
+              {currentModule.description && (
+                <p className="text-gray-600 mb-6">{currentModule.description}</p>
+              )}
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e]">
-      {/* Background Effects */}
-      <div className="absolute top-[-100px] left-[-100px] w-[500px] h-[500px] bg-gradient-to-r from-blue-500/15 to-purple-500/15 blur-[160px] rounded-full animate-pulse-slow"></div>
-      <div className="absolute bottom-[-100px] right-[-100px] w-[400px] h-[400px] bg-gradient-to-r from-purple-500/15 to-pink-500/15 blur-[140px] rounded-full animate-pulse-slower"></div>
-
-      <div className="relative z-10">
-        {/* Navigation */}
-        <div className="bg-white/5 border-b border-white/10 backdrop-blur-xl sticky top-0 z-20">
-          <div className="max-w-7xl mx-auto px-6 py-4">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.back()}
-                className="p-2 hover:bg-white/10 rounded-lg transition-all duration-300 group"
-              >
-                <ArrowLeftIcon className="w-5 h-5 text-white group-hover:-translate-x-1 transition-transform" />
-              </button>
-              <div className="flex-1">
-                <h1 className="text-xl font-semibold text-white">{module.title}</h1>
-                <p className="text-gray-400 text-sm">{module.course.title}</p>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                {module.duration && (
-                  <div className="flex items-center gap-1">
-                    <ClockIcon className="w-4 h-4" />
-                    <span>{module.duration} min</span>
+              {/* Progress overview */}
+              <div className="space-y-4 mb-6">
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-medium text-gray-700">Progress</span>
+                    <span className="text-sm text-gray-500">{Math.round(moduleProgress)}%</span>
                   </div>
-                )}
-                <div className="flex items-center gap-1">
-                  <BookOpenIcon className="w-4 h-4" />
-                  <span>Module</span>
+                  <ProgressBar progress={moduleProgress} />
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Main Content */}
-            <div className="lg:col-span-2 space-y-8">
-              {/* Module Content */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl">
-                <h2 className="text-2xl font-bold text-white mb-6">{module.title}</h2>
-                
-                {/* Video Player or Content */}
-                {isOwned ? (
-                  <div className="space-y-6">
-                    {module.videoUrl ? (
-                      <div className="relative aspect-video bg-black rounded-xl overflow-hidden">
-                        <video
-                          controls
-                          className="w-full h-full"
-                          poster={module.thumbnailUrl}
-                        >
-                          <source src={module.videoUrl} type="video/mp4" />
-                          Your browser does not support the video tag.
-                        </video>
-                      </div>
-                    ) : (
-                      <div className="relative aspect-video bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center">
-                        <div className="text-center">
-                          <PlayIcon className="w-16 h-16 text-white/60 mx-auto mb-4" />
-                          <p className="text-white/60">Content will be available soon</p>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Module Content */}
-                    {module.content && (
-                      <div className="prose prose-invert max-w-none">
-                        <div className="text-gray-300 leading-relaxed whitespace-pre-wrap">
-                          {module.content}
-                        </div>
-                      </div>
-                    )}
+                <div className="grid grid-cols-2 gap-4 text-center">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-gray-900">{completedChapters}</div>
+                    <div className="text-sm text-gray-500">Completed</div>
                   </div>
-                ) : (
-                  <div className="space-y-6">
-                    {/* Locked Content Preview */}
-                    <div className="relative aspect-video bg-black/20 rounded-xl overflow-hidden border border-white/10">
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                        <div className="text-center">
-                          <LockClosedIcon className="w-16 h-16 text-white/60 mx-auto mb-4" />
-                          <h3 className="text-xl font-semibold text-white mb-2">Content Locked</h3>
-                          <p className="text-gray-400">Purchase this module to access the content</p>
-                        </div>
-                      </div>
-                      {/* Background preview (blurred) */}
-                      <div className="w-full h-full bg-gradient-to-br from-blue-500/10 to-purple-500/10 blur-sm"></div>
-                    </div>
-
-                    {/* Content Preview */}
-                    {module.content && (
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/60 z-10"></div>
-                        <div className="text-gray-300 leading-relaxed opacity-50 max-h-32 overflow-hidden">
-                          {module.content.substring(0, 200)}...
-                        </div>
-                        <div className="absolute bottom-0 left-0 right-0 text-center py-4 z-20">
-                          <p className="text-sm text-gray-400">Purchase to read full content</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Additional Module Info */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                <h3 className="text-lg font-semibold text-white mb-4">About This Module</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-400">Duration:</span>
-                    <span className="text-white ml-2">{module.duration || 'N/A'} minutes</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Type:</span>
-                    <span className="text-white ml-2">
-                      {module.videoUrl ? 'Video' : 'Text'} Content
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Course:</span>
-                    <span className="text-white ml-2">{module.course.title}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-400">Price:</span>
-                    <span className="text-white ml-2">
-                      {module.isFree || module.price === 0 ? 'Free' : `${module.price}`}
-                    </span>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-2xl font-bold text-gray-900">{currentModule.chapters.length}</div>
+                    <div className="text-sm text-gray-500">Total Chapters</div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Sidebar */}
-            <div className="space-y-6">
-              {/* Purchase Component */}
-              <div className="sticky top-24">
-                <ModulePurchase
-                  module={module}
-                  isOwned={isOwned}
-                  canPurchase={canPurchase}
-                  onPurchaseSuccess={handlePurchaseSuccess}
-                />
-              </div>
-
-              {/* Learning Path */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                <h3 className="text-lg font-semibold text-white mb-4">Part of Course</h3>
-                <div className="space-y-3">
-                  <div className="p-3 bg-white/5 rounded-xl">
-                    <h4 className="font-medium text-white">{module.course.title}</h4>
-                    <p className="text-sm text-gray-400 mt-1">Complete course series</p>
+              {/* Module pricing */}
+              {!currentModule.isFree && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Lock className="h-5 w-5 text-yellow-600" />
+                    <span className="font-medium text-yellow-800">Premium Module</span>
                   </div>
-                  <button
-                    onClick={() => router.push(`/courses/${courseId}`)}
-                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-                  >
-                    View Full Course
+                  <p className="text-yellow-700 text-sm mb-3">
+                    This module requires a separate purchase to access all content.
+                  </p>
+                  <div className="text-2xl font-bold text-yellow-900 mb-3">
+                    ${currentModule.price}
+                  </div>
+                  <button className="w-full bg-yellow-600 text-white py-2 rounded-lg hover:bg-yellow-700">
+                    Purchase Module
                   </button>
-                </div>
-              </div>
-
-              {/* Features */}
-              {isOwned && (
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                  <h3 className="text-lg font-semibold text-white mb-4">What You Get</h3>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex items-center gap-2 text-gray-300">
-                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                      Lifetime access to content
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-300">
-                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                      Mobile and desktop compatible
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-300">
-                      <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                      Progress tracking
-                    </div>
-                    {module.videoUrl && (
-                      <div className="flex items-center gap-2 text-gray-300">
-                        <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                        HD video content
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
             </div>
           </div>
-        </div>
-      </div>
 
-      <style jsx>{`
-        @keyframes pulse-slow {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 0.6; transform: scale(1.05); }
-        }
-        @keyframes pulse-slower {
-          0%, 100% { opacity: 0.2; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(1.1); }
-        }
-        .animate-pulse-slow { animation: pulse-slow 4s ease-in-out infinite; }
-        .animate-pulse-slower { animation: pulse-slower 6s ease-in-out infinite; }
-      `}</style>
+          {/* Chapters list */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-lg shadow-sm">
+              <div className="p-6 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Chapters</h3>
+                <p className="text-gray-600 mt-1">
+                  {currentModule.chapters.length} chapters in this module
+                </p>
+              </div>
+
+              <div className="divide-y divide-gray-200">
+                {currentModule.chapters
+                  .sort((a, b) => a.order - b.order)
+                  .map((chapter, index) => {
+                    const chapterProgress = getChapterProgress(chapter.id);
+                    const isCompleted = chapterProgress?.isCompleted || false;
+                    const isAccessible = isChapterAccessible(chapter);
+                    
+                    return (
+                      <div key={chapter.id} className="p-6 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-start space-x-4">
+                          {/* Chapter number and status */}
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium">
+                            {isCompleted ? (
+                              <CheckCircle className="h-6 w-6 text-green-500" />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full border-2 border-gray-300 flex items-center justify-center text-gray-500">
+                                {index + 1}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Chapter content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  {getChapterIcon(chapter)}
+                                  <h4 className="text-lg font-medium text-gray-900">
+                                    {chapter.title}
+                                  </h4>
+                                  {!isAccessible && (
+                                    <Lock className="h-4 w-4 text-gray-400" />
+                                  )}
+                                </div>
+                                
+                                {chapter.description && (
+                                  <p className="text-gray-600 mb-2">{chapter.description}</p>
+                                )}
+
+                                <div className="flex items-center space-x-4 text-sm text-gray-500">
+                                  <span className="capitalize">{chapter.type.toLowerCase()}</span>
+                                  {chapter.duration && (
+                                    <span className="flex items-center space-x-1">
+                                      <Clock className="h-4 w-4" />
+                                      <span>{formatDuration(chapter.duration)}</span>
+                                    </span>
+                                  )}
+                                  {chapterProgress && chapterProgress.completionPercentage > 0 && !isCompleted && (
+                                    <span>{Math.round(chapterProgress.completionPercentage)}% complete</span>
+                                  )}
+                                </div>
+
+                                {/* Progress bar for in-progress chapters */}
+                                {chapterProgress && chapterProgress.completionPercentage > 0 && !isCompleted && (
+                                  <div className="mt-2 w-1/2">
+                                    <ProgressBar 
+                                      progress={chapterProgress.completionPercentage} 
+                                      size="sm"
+                                    />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Action button */}
+                              <button
+                                onClick={() => startLearning(chapter.id)}
+                                disabled={!isAccessible}
+                                className={`
+                                  flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors
+                                  ${isAccessible
+                                    ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  }
+                                `}
+                              >
+                                <Play className="h-4 w-4" />
+                                <span>{isCompleted ? 'Review' : 'Start'}</span>
+                                <ChevronRight className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            {/* Module completion card */}
+            {moduleProgress === 100 && (
+              <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-6">
+                <div className="flex items-center space-x-3">
+                  <CheckCircle className="h-8 w-8 text-green-500" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-green-900">Module Completed!</h3>
+                    <p className="text-green-700">
+                      Congratulations! You've completed all chapters in this module.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

@@ -1,4 +1,3 @@
-// frontend/src/app/admin/chapters/page.tsx
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -7,16 +6,16 @@ import AdminLayout from '@/components/admin/AdminLayout';
 import ChaptersTable from '@/components/admin/ChaptersTable';
 import ChaptersStats from '@/components/admin/ChaptersStats';
 import ChapterModal from '@/components/admin/ChapterModal';
-import { 
-  MagnifyingGlassIcon, 
-  PlusIcon, 
+import {
+  MagnifyingGlassIcon,
+  PlusIcon,
   FunnelIcon,
   XMarkIcon,
-  BookOpenIcon
+  BookOpenIcon,
 } from '@heroicons/react/24/outline';
 
 interface Chapter {
-  id: number;
+  id: string; // Changed to string to match Prisma schema
   title: string;
   description: string;
   content?: string;
@@ -36,9 +35,15 @@ interface Chapter {
   };
 }
 
+interface Course {
+  id: number;
+  title: string;
+}
+
 interface Module {
   id: number;
   title: string;
+  courseId: number; // Added courseId to match ChapterModal
   course?: {
     id: number;
     title: string;
@@ -48,6 +53,7 @@ interface Module {
 export default function AdminChaptersPage() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [filteredChapters, setFilteredChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -71,11 +77,32 @@ export default function AdminChaptersPage() {
     try {
       setLoading(true);
       setError(null);
-      
-      // First fetch modules to get the list
+
+      // Fetch courses
+      const coursesRes = await fetch('http://localhost:5000/api/admin/courses', {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!coursesRes.ok) {
+        if (coursesRes.status === 401) {
+          router.push('/login');
+          return;
+        }
+        if (coursesRes.status === 403) {
+          router.push('/');
+          return;
+        }
+        throw new Error('Failed to fetch courses');
+      }
+
+      const coursesData = await coursesRes.json();
+      setCourses(Array.isArray(coursesData) ? coursesData : []);
+
+      // Fetch modules
       const modulesRes = await fetch('http://localhost:5000/api/admin/modules', {
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
       });
 
       if (!modulesRes.ok) {
@@ -92,27 +119,26 @@ export default function AdminChaptersPage() {
 
       const modulesData = await modulesRes.json();
       setModules(Array.isArray(modulesData) ? modulesData : []);
-      
-      // Fetch chapters for each module (since there's no "get all chapters" endpoint)
+
+      // Fetch chapters for each module
       const allChapters: Chapter[] = [];
-      
+
       for (const module of modulesData) {
         try {
           const chaptersRes = await fetch(`http://localhost:5000/api/admin/chapters/module/${module.id}`, {
             credentials: 'include',
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
           });
-          
+
           if (chaptersRes.ok) {
             const moduleChapters = await chaptersRes.json();
-            // Add module info to each chapter
             const chaptersWithModule = moduleChapters.map((chapter: any) => ({
               ...chapter,
               module: {
                 id: module.id,
                 title: module.title,
-                course: module.course
-              }
+                course: module.course,
+              },
             }));
             allChapters.push(...chaptersWithModule);
           }
@@ -120,9 +146,8 @@ export default function AdminChaptersPage() {
           console.warn(`Failed to fetch chapters for module ${module.id}:`, err);
         }
       }
-      
+
       setChapters(allChapters);
-      
     } catch (err: unknown) {
       console.error('Error fetching data:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch data';
@@ -136,23 +161,24 @@ export default function AdminChaptersPage() {
     let filtered = chapters;
 
     if (searchTerm) {
-      filtered = filtered.filter(chapter => 
-        chapter.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        chapter.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        chapter.module.title.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(
+        (chapter) =>
+          chapter.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          chapter.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          chapter.module.title.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
     if (statusFilter !== 'ALL') {
-      filtered = filtered.filter(chapter => chapter.publishStatus === statusFilter);
+      filtered = filtered.filter((chapter) => chapter.publishStatus === statusFilter);
     }
 
     if (moduleFilter !== 'ALL') {
-      filtered = filtered.filter(chapter => chapter.moduleId === moduleFilter);
+      filtered = filtered.filter((chapter) => chapter.moduleId === moduleFilter);
     }
 
     if (typeFilter !== 'ALL') {
-      filtered = filtered.filter(chapter => chapter.type === typeFilter);
+      filtered = filtered.filter((chapter) => chapter.type === typeFilter);
     }
 
     setFilteredChapters(filtered);
@@ -177,12 +203,12 @@ export default function AdminChaptersPage() {
     setIsModalOpen(true);
   };
 
-  const handleDeleteChapter = async (chapterId: number, chapterTitle: string) => {
+  const handleDeleteChapter = async (chapterId: string, chapterTitle: string) => {
     try {
       const response = await fetch(`http://localhost:5000/api/admin/chapters/${chapterId}`, {
         method: 'DELETE',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
       });
 
       if (!response.ok) {
@@ -191,7 +217,6 @@ export default function AdminChaptersPage() {
       }
 
       await fetchData();
-      
     } catch (err: unknown) {
       console.error('Error deleting chapter:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to delete chapter';
@@ -200,14 +225,14 @@ export default function AdminChaptersPage() {
     }
   };
 
-  const handleToggleStatus = async (chapterId: number, currentStatus: string) => {
+  const handleToggleStatus = async (chapterId: string, currentStatus: string) => {
     try {
       const newStatus = currentStatus === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED';
       const response = await fetch(`http://localhost:5000/api/admin/chapters/${chapterId}`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publishStatus: newStatus })
+        body: JSON.stringify({ publishStatus: newStatus }),
       });
 
       if (!response.ok) {
@@ -216,7 +241,6 @@ export default function AdminChaptersPage() {
       }
 
       await fetchData();
-      
     } catch (err: unknown) {
       console.error('Error updating chapter status:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to update chapter status';
@@ -269,12 +293,12 @@ export default function AdminChaptersPage() {
 
   // Calculate stats
   const totalChapters = chapters.length;
-  const publishedChapters = chapters.filter(chapter => chapter.publishStatus === 'PUBLISHED').length;
-  const draftChapters = chapters.filter(chapter => chapter.publishStatus === 'DRAFT').length;
-  const videoChapters = chapters.filter(chapter => chapter.type === 'VIDEO').length;
-  const textChapters = chapters.filter(chapter => chapter.type === 'TEXT').length;
-  const pdfChapters = chapters.filter(chapter => chapter.type === 'PDF').length;
-  const quizChapters = chapters.filter(chapter => chapter.type === 'QUIZ').length;
+  const publishedChapters = chapters.filter((chapter) => chapter.publishStatus === 'PUBLISHED').length;
+  const draftChapters = chapters.filter((chapter) => chapter.publishStatus === 'DRAFT').length;
+  const videoChapters = chapters.filter((chapter) => chapter.type === 'VIDEO').length;
+  const textChapters = chapters.filter((chapter) => chapter.type === 'TEXT').length;
+  const pdfChapters = chapters.filter((chapter) => chapter.type === 'PDF').length;
+  const quizChapters = chapters.filter((chapter) => chapter.type === 'QUIZ').length;
 
   return (
     <AdminLayout>
@@ -285,8 +309,8 @@ export default function AdminChaptersPage() {
             <h1 className="text-3xl font-bold text-white mb-2">Chapters Management</h1>
             <p className="text-gray-400">Manage course chapters, content, and publication status</p>
           </div>
-          
-          <button 
+
+          <button
             onClick={handleCreateChapter}
             className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
           >
@@ -373,22 +397,18 @@ export default function AdminChaptersPage() {
           <div className="mt-4 flex items-center justify-between text-sm">
             <div className="text-gray-400">
               Showing {filteredChapters.length} of {chapters.length} chapters
-              {searchTerm && (
-                <span className="ml-2 text-blue-400">• Search: "{searchTerm}"</span>
-              )}
+              {searchTerm && <span className="ml-2 text-blue-400">• Search: "{searchTerm}"</span>}
               {statusFilter !== 'ALL' && (
                 <span className="ml-2 text-blue-400">• Status: {statusFilter}</span>
               )}
               {moduleFilter !== 'ALL' && (
                 <span className="ml-2 text-blue-400">
-                  • Module: {modules.find(m => m.id === moduleFilter)?.title}
+                  • Module: {modules.find((m) => m.id === moduleFilter)?.title}
                 </span>
               )}
-              {typeFilter !== 'ALL' && (
-                <span className="ml-2 text-blue-400">• Type: {typeFilter}</span>
-              )}
+              {typeFilter !== 'ALL' && <span className="ml-2 text-blue-400">• Type: {typeFilter}</span>}
             </div>
-            
+
             {hasActiveFilters && (
               <button
                 onClick={clearAllFilters}
@@ -446,6 +466,7 @@ export default function AdminChaptersPage() {
         {isModalOpen && (
           <ChapterModal
             chapter={editingChapter}
+            courses={courses}
             modules={modules}
             onClose={handleModalClose}
             onSuccess={handleModalSuccess}

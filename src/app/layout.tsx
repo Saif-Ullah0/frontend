@@ -62,7 +62,7 @@ export const metadata: Metadata = {
     description: 'Learn from industry experts with hands-on courses in web development, data science, AI, and more.',
     images: [
       {
-        url: '/og-image.jpg', // Add this image to your public folder
+        url: '/og-image.jpg',
         width: 1200,
         height: 630,
         alt: 'EduPlatform - Online Learning Platform',
@@ -74,7 +74,7 @@ export const metadata: Metadata = {
     title: 'EduPlatform - Master Tech Skills That Actually Matter',
     description: 'Learn from industry experts with hands-on courses in web development, data science, AI, and more.',
     images: ['/og-image.jpg'],
-    creator: '@eduplatform', // Replace with your Twitter handle
+    creator: '@eduplatform',
   },
   icons: {
     icon: [
@@ -88,7 +88,7 @@ export const metadata: Metadata = {
       { rel: 'mask-icon', url: '/safari-pinned-tab.svg', color: '#3b82f6' },
     ],
   },
-  manifest: '/site.webmanifest',
+  // manifest: '/site.webmanifest', // 🔥 Removed to avoid 404
   alternates: {
     canonical: 'https://your-domain.com',
   },
@@ -117,14 +117,9 @@ export default function RootLayout({ children }: RootLayoutProps) {
       suppressHydrationWarning
     >
       <head>
-        {/* Preconnect to external domains for better performance */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        
-        {/* DNS prefetch for common external resources */}
         <link rel="dns-prefetch" href="//images.unsplash.com" />
-        
-        {/* Prevent FOUC (Flash of Unstyled Content) */}
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -151,7 +146,6 @@ export default function RootLayout({ children }: RootLayoutProps) {
         `}
         suppressHydrationWarning
       >
-        {/* Skip to main content for accessibility */}
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:top-4 focus:left-4 bg-blue-600 text-white px-4 py-2 rounded-lg z-50 transition-all"
@@ -160,7 +154,6 @@ export default function RootLayout({ children }: RootLayoutProps) {
         </a>
 
         <AuthProvider>
-          {/* Global Loading Indicator */}
           <div id="global-loading" className="hidden">
             <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center">
               <div className="bg-white/10 border border-white/20 rounded-2xl p-8 backdrop-blur-xl">
@@ -172,20 +165,16 @@ export default function RootLayout({ children }: RootLayoutProps) {
             </div>
           </div>
 
-          {/* Header */}
           <header className="sticky top-0 z-40">
             <Navbar />
           </header>
 
-          {/* Main Content */}
           <main id="main-content" className="flex-1">
             {children}
           </main>
 
-          {/* Footer */}
           <Footer />
 
-          {/* Enhanced Toast Notifications */}
           <Toaster
             position="top-right"
             toastOptions={{
@@ -221,14 +210,12 @@ export default function RootLayout({ children }: RootLayoutProps) {
             }}
           />
 
-          {/* Background Elements */}
           <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
             <div className="absolute top-[-200px] left-[-200px] w-[600px] h-[600px] bg-gradient-to-r from-blue-500/10 to-purple-500/10 blur-[120px] rounded-full animate-pulse-slow"></div>
             <div className="absolute bottom-[-200px] right-[-200px] w-[500px] h-[500px] bg-gradient-to-r from-purple-500/10 to-pink-500/10 blur-[100px] rounded-full animate-pulse-slower"></div>
           </div>
         </AuthProvider>
 
-        {/* Service Worker Registration */}
         <script
           dangerouslySetInnerHTML={{
             __html: `

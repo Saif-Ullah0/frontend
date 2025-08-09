@@ -1,7 +1,6 @@
-// frontend/src/app/bundles/page.tsx - Enhanced Version
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   ShoppingCartIcon,
   TrashIcon,
@@ -14,7 +13,12 @@ import {
   EyeIcon,
   CurrencyDollarIcon,
   SparklesIcon,
-  ArrowTrendingUpIcon  // ✅ CORRECT NAME
+  ArrowTrendingUpIcon,
+  GlobeAltIcon,
+  LockClosedIcon,
+  ExclamationTriangleIcon,
+  MagnifyingGlassIcon,
+  AdjustmentsHorizontalIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -33,9 +37,17 @@ interface Bundle {
   isActive: boolean;
   isFeatured: boolean;
   isPopular: boolean;
+  isPublic: boolean;
   salesCount: number;
   revenue: number;
   viewCount: number;
+  totalItems: number;
+  individualTotal: number;
+  savings: number;
+  savingsPercentage: number;
+  canEdit: boolean;
+  canDelete: boolean;
+  isOwner: boolean;
   items?: Array<{
     module: {
       id: number;
@@ -55,6 +67,12 @@ interface Bundle {
       modules: Array<{ id: number; title: string; duration?: number }>;
     };
   }>;
+  user: {
+    id: number;
+    name: string;
+    email: string;
+    isAdmin: boolean;
+  };
   createdAt: string;
 }
 
@@ -65,6 +83,8 @@ interface UserAnalytics {
     totalRevenue: number;
     totalSales: number;
     totalViews: number;
+    featuredBundles: number;
+    popularBundles: number;
   };
   bundleTypeStats: Array<{
     type: string;
@@ -81,69 +101,100 @@ interface UserAnalytics {
 }
 
 type ActiveTab = 'my-bundles' | 'create-module-bundle' | 'create-course-bundle' | 'analytics';
+type FilterType = 'all' | 'MODULE' | 'COURSE';
+type StatusFilter = 'all' | 'active' | 'inactive' | 'featured' | 'popular' | 'public' | 'private';
 
 export default function BundlesPage() {
   const [bundles, setBundles] = useState<Bundle[]>([]);
+  const [filteredBundles, setFilteredBundles] = useState<Bundle[]>([]);
   const [analytics, setAnalytics] = useState<UserAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [purchaseLoading, setPurchaseLoading] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('my-bundles');
-  const [filterType, setFilterType] = useState<'all' | 'MODULE' | 'COURSE'>('all');
+  const [filterType, setFilterType] = useState<FilterType>('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('newest');
 
-  useEffect(() => {
-    fetchBundles();
-    fetchAnalytics();
+  // Enhanced fetch bundles with better error handling
+  const fetchBundles = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        type: filterType,
+        status: statusFilter,
+        sort: sortBy,
+        limit: '50'
+      });
+
+      const response = await fetch(`http://localhost:5000/api/bundles/my-bundles?${params}`, {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📦 Enhanced bundle response:', data);
+        
+        const bundlesArray = data.bundles || [];
+        setBundles(Array.isArray(bundlesArray) ? bundlesArray : []);
+      } else {
+        const errorData = await response.json();
+        console.error('❌ Failed to fetch bundles:', response.status, errorData);
+        toast.error(errorData.message || 'Failed to load bundles');
+        setBundles([]);
+      }
+    } catch (error) {
+      console.error('Error fetching bundles:', error);
+      toast.error('Something went wrong while loading bundles');
+      setBundles([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [filterType, statusFilter, sortBy]);
+
+  const fetchAnalytics = useCallback(async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/bundles/my-analytics', {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📊 Enhanced analytics response:', data);
+        setAnalytics(data.analytics || null);
+      } else {
+        console.error('❌ Failed to fetch analytics:', response.status);
+      }
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+    }
   }, []);
 
- const fetchBundles = async () => {
-  try {
-    setLoading(true);
-    const response = await fetch('http://localhost:5000/api/bundles/my-bundles', {
-      credentials: 'include'
-    });
+  // Apply search and additional filtering
+  useEffect(() => {
+    let filtered = bundles;
 
-    if (response.ok) {
-      const data = await response.json();
-      console.log('📦 Bundle response:', data); // Debug log
-      
-      // Handle the response format: { success: true, bundles: [...] }
-      const bundlesArray = data.bundles || data || [];
-      
-      // Ensure it's always an array
-      setBundles(Array.isArray(bundlesArray) ? bundlesArray : []);
-    } else {
-      console.error('❌ Failed to fetch bundles:', response.status);
-      toast.error('Failed to load bundles');
-      setBundles([]); // Set empty array on error
+    // Apply search filter
+    if (searchTerm.trim()) {
+      const search = searchTerm.toLowerCase();
+      filtered = filtered.filter(bundle =>
+        bundle.name.toLowerCase().includes(search) ||
+        bundle.description?.toLowerCase().includes(search)
+      );
     }
-  } catch (error) {
-    console.error('Error fetching bundles:', error);
-    toast.error('Something went wrong');
-    setBundles([]); // Set empty array on error
-  } finally {
-    setLoading(false);
-  }
-};
 
- const fetchAnalytics = async () => {
-  try {
-    const response = await fetch('http://localhost:5000/api/bundles/my-analytics', {
-      credentials: 'include'
-    });
+    setFilteredBundles(filtered);
+  }, [bundles, searchTerm]);
 
-    if (response.ok) {
-      const data = await response.json();
-      console.log('📊 Analytics response:', data); // Debug log
-      
-      // Handle the response format
-      setAnalytics(data.analytics || data || null);
-    } else {
-      console.error('❌ Failed to fetch analytics:', response.status);
+  useEffect(() => {
+    if (activeTab === 'my-bundles') {
+      fetchBundles();
     }
-  } catch (error) {
-    console.error('Error fetching analytics:', error);
-  }
-};
+  }, [activeTab, fetchBundles]);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [fetchAnalytics]);
 
   const handlePurchaseBundle = async (bundleId: number) => {
     setPurchaseLoading(bundleId);
@@ -161,7 +212,7 @@ export default function BundlesPage() {
       if (response.ok && data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
       } else {
-        toast.error(data.error || 'Purchase failed');
+        toast.error(data.message || data.error || 'Purchase failed');
       }
     } catch (error) {
       console.error('Purchase error:', error);
@@ -172,7 +223,12 @@ export default function BundlesPage() {
   };
 
   const handleDeleteBundle = async (bundleId: number) => {
-    if (!confirm('Are you sure you want to delete this bundle?')) return;
+    const bundle = bundles.find(b => b.id === bundleId);
+    const confirmMessage = bundle?.salesCount > 0 
+      ? `Are you sure you want to delete "${bundle.name}"? This bundle has ${bundle.salesCount} sales.`
+      : `Are you sure you want to delete "${bundle?.name}"?`;
+
+    if (!confirm(confirmMessage)) return;
 
     try {
       const response = await fetch(`http://localhost:5000/api/bundles/${bundleId}`, {
@@ -180,13 +236,14 @@ export default function BundlesPage() {
         credentials: 'include'
       });
 
+      const data = await response.json();
+
       if (response.ok) {
         toast.success('Bundle deleted successfully');
         fetchBundles();
         fetchAnalytics();
       } else {
-        const data = await response.json();
-        toast.error(data.error || 'Failed to delete bundle');
+        toast.error(data.message || data.error || 'Failed to delete bundle');
       }
     } catch (error) {
       console.error('Delete error:', error);
@@ -195,28 +252,10 @@ export default function BundlesPage() {
   };
 
   const handleBundleCreated = () => {
+    toast.success('Bundle created successfully!');
     fetchBundles();
     fetchAnalytics();
     setActiveTab('my-bundles');
-  };
-
-  const calculateSavings = (totalPrice: number, finalPrice: number) => {
-    const savings = totalPrice - finalPrice;
-    const percentage = Math.round((savings / totalPrice) * 100);
-    return { savings, percentage };
-  };
-
-  const getFilteredBundles = () => {
-    if (filterType === 'all') return bundles;
-    return bundles.filter(bundle => bundle.type === filterType);
-  };
-
-  const getBundleStats = (bundle: Bundle) => {
-    const itemCount = bundle.type === 'COURSE' 
-      ? bundle.courseItems?.length || 0 
-      : bundle.items?.length || 0;
-    
-    return { itemCount };
   };
 
   if (loading && activeTab === 'my-bundles') {
@@ -230,8 +269,6 @@ export default function BundlesPage() {
     );
   }
 
-  const filteredBundles = getFilteredBundles();
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e]">
       {/* Background Effects */}
@@ -244,8 +281,8 @@ export default function BundlesPage() {
           <h1 className="text-4xl font-bold text-white mb-4">My Bundle Workshop</h1>
           <p className="text-gray-400 text-lg">Create and manage your custom learning packages</p>
           
-          {/* Quick Link to Marketplace */}
-          <div className="mt-4">
+          {/* Quick Links */}
+          <div className="mt-4 flex items-center gap-4 flex-wrap">
             <Link 
               href="/shop/bundles"
               className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 transition-colors"
@@ -253,6 +290,13 @@ export default function BundlesPage() {
               <SparklesIcon className="w-5 h-5" />
               <span>Browse Bundle Marketplace</span>
             </Link>
+            
+            {analytics && analytics.overview.totalRevenue > 0 && (
+              <div className="inline-flex items-center gap-2 text-green-400">
+                <CurrencyDollarIcon className="w-5 h-5" />
+                <span>Total Revenue: ${analytics.overview.totalRevenue.toFixed(2)}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -291,46 +335,122 @@ export default function BundlesPage() {
             <AcademicCapIcon className="w-4 h-4" />
             Create Course Bundle
           </button>
-          
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 whitespace-nowrap ${
+              activeTab === 'analytics'
+                ? 'bg-orange-500 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <ChartBarIcon className="w-4 h-4" />
+            Analytics
+          </button>
         </div>
 
         {/* Content */}
         {activeTab === 'my-bundles' && (
           <div className="space-y-8">
-            {/* Filter Tabs */}
-            {bundles.length > 0 && (
-              <div className="flex gap-2 mb-6">
-                {[
-                  { key: 'all', label: 'All Bundles', count: bundles.length },
-                  { key: 'MODULE', label: 'Module Bundles', count: bundles.filter(b => b.type === 'MODULE').length },
-                  { key: 'COURSE', label: 'Course Bundles', count: bundles.filter(b => b.type === 'COURSE').length },
-                ].map(({ key, label, count }) => (
-                  <button
-                    key={key}
-                    onClick={() => setFilterType(key as any)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
-                      filterType === key
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-white/5 text-gray-400 hover:text-white hover:bg-white/10'
-                    }`}
+            {/* Enhanced Controls */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+              <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
+                {/* Search */}
+                <div className="relative flex-1 max-w-md">
+                  <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search your bundles..."
+                    className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                {/* Filters */}
+                <div className="flex gap-2 flex-wrap">
+                  {/* Type Filter */}
+                  <select
+                    value={filterType}
+                    onChange={(e) => setFilterType(e.target.value as FilterType)}
+                    className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
                   >
-                    {label} ({count})
-                  </button>
-                ))}
+                    <option value="all">All Types</option>
+                    <option value="MODULE">Module Bundles</option>
+                    <option value="COURSE">Course Bundles</option>
+                  </select>
+
+                  {/* Status Filter */}
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                    className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="featured">Featured</option>
+                    <option value="popular">Popular</option>
+                    <option value="public">Public</option>
+                    <option value="private">Private</option>
+                  </select>
+
+                  {/* Sort */}
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                    <option value="sales">Most Sales</option>
+                    <option value="revenue">Highest Revenue</option>
+                    <option value="views">Most Views</option>
+                  </select>
+                </div>
               </div>
-            )}
+
+              {/* Quick Stats */}
+              {bundles.length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mt-4 pt-4 border-t border-white/10">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-white">{bundles.length}</p>
+                    <p className="text-xs text-gray-400">Total</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-green-400">{bundles.filter(b => b.isActive).length}</p>
+                    <p className="text-xs text-gray-400">Active</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-blue-400">{bundles.filter(b => b.isPublic).length}</p>
+                    <p className="text-xs text-gray-400">Public</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-yellow-400">{bundles.filter(b => b.isFeatured).length}</p>
+                    <p className="text-xs text-gray-400">Featured</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-purple-400">{bundles.reduce((sum, b) => sum + b.salesCount, 0)}</p>
+                    <p className="text-xs text-gray-400">Sales</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-pink-400">${bundles.reduce((sum, b) => sum + b.revenue, 0).toFixed(0)}</p>
+                    <p className="text-xs text-gray-400">Revenue</p>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {filteredBundles.length === 0 ? (
               <div className="text-center py-16">
                 <div className="bg-white/5 border border-white/10 rounded-3xl p-12 max-w-md mx-auto">
                   <ShoppingCartIcon className="w-20 h-20 text-gray-400 mx-auto mb-6" />
                   <h3 className="text-2xl font-semibold text-white mb-4">
-                    {bundles.length === 0 ? 'No Bundles Yet' : 'No Bundles in This Category'}
+                    {bundles.length === 0 ? 'No Bundles Yet' : 'No Bundles Match Your Filters'}
                   </h3>
                   <p className="text-gray-400 mb-6">
                     {bundles.length === 0 
                       ? 'Create your first bundle to get started with custom learning packages'
-                      : `You don't have any ${filterType.toLowerCase()} bundles yet`
+                      : 'Try adjusting your search or filter criteria'
                     }
                   </p>
                   <div className="space-y-3">
@@ -351,143 +471,120 @@ export default function BundlesPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredBundles.map((bundle) => {
-                  const { savings, percentage } = calculateSavings(bundle.totalPrice, bundle.finalPrice);
-                  const { itemCount } = getBundleStats(bundle);
-                  
-                  return (
-                    <div
-                      key={bundle.id}
-                      className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all duration-300 hover:scale-105"
-                    >
-                      {/* Bundle Header */}
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                              bundle.type === 'COURSE' ? 'bg-green-500/20 text-green-400' : 'bg-purple-500/20 text-purple-400'
-                            }`}>
-                              {bundle.type === 'COURSE' ? 'Course Bundle' : 'Module Bundle'}
-                            </span>
-                            
-                            {bundle.isFeatured && (
-                              <div className="flex items-center gap-1 bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded-full text-xs">
-                                <SparklesIcon className="w-3 h-3" />
-                                <span>Featured</span>
-                              </div>
-                            )}
-                            
-                            {bundle.isPopular && (
-                              <div className="flex items-center gap-1 bg-red-500/20 text-red-400 px-2 py-1 rounded-full text-xs">
-                                <ArrowTrendingUpIcon className="w-3 h-3" />
-                                <span>Popular</span>
-                              </div>
-                            )}
+                {filteredBundles.map((bundle) => (
+                  <div
+                    key={bundle.id}
+                    className="bg-white/5 border border-white/10 rounded-3xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all duration-300 hover:scale-105"
+                  >
+                    {/* Bundle Header */}
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-3 flex-wrap">
+                          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                            bundle.type === 'COURSE' ? 'bg-green-500/20 text-green-400' : 'bg-purple-500/20 text-purple-400'
+                          }`}>
+                            {bundle.type === 'COURSE' ? 'Course Bundle' : 'Module Bundle'}
+                          </span>
+
+                          {/* Visibility Indicator */}
+                          <div className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                            bundle.isPublic ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'
+                          }`}>
+                            {bundle.isPublic ? <GlobeAltIcon className="w-3 h-3" /> : <LockClosedIcon className="w-3 h-3" />}
+                            <span>{bundle.isPublic ? 'Public' : 'Private'}</span>
                           </div>
                           
-                          <h3 className="text-xl font-bold text-white mb-2">{bundle.name}</h3>
-                          {bundle.description && (
-                            <p className="text-gray-400 text-sm leading-relaxed line-clamp-2">{bundle.description}</p>
+                          {bundle.isFeatured && (
+                            <div className="flex items-center gap-1 bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded-full text-xs">
+                              <SparklesIcon className="w-3 h-3" />
+                              <span>Featured</span>
+                            </div>
+                          )}
+                          
+                          {bundle.isPopular && (
+                            <div className="flex items-center gap-1 bg-red-500/20 text-red-400 px-2 py-1 rounded-full text-xs">
+                              <ArrowTrendingUpIcon className="w-3 h-3" />
+                              <span>Popular</span>
+                            </div>
                           )}
                         </div>
                         
-                        {bundle.isPurchased && (
-                          <div className="flex items-center gap-1 text-green-400 bg-green-500/20 px-3 py-1 rounded-full text-sm font-medium">
-                            <CheckCircleIcon className="w-4 h-4" />
-                            <span>Owned</span>
-                          </div>
+                        <h3 className="text-xl font-bold text-white mb-2">{bundle.name}</h3>
+                        {bundle.description && (
+                          <p className="text-gray-400 text-sm leading-relaxed line-clamp-2">{bundle.description}</p>
                         )}
                       </div>
+                      
+                      {!bundle.isActive && (
+                        <div className="flex items-center gap-1 text-red-400 bg-red-500/20 px-3 py-1 rounded-full text-sm font-medium">
+                          <ExclamationTriangleIcon className="w-4 h-4" />
+                          <span>Inactive</span>
+                        </div>
+                      )}
+                    </div>
 
-                      {/* Bundle Stats
-                      <div className="grid grid-cols-3 gap-3 mb-4">
-                        <div className="bg-white/5 rounded-lg p-3 text-center">
-                          <div className="text-lg font-bold text-white">{itemCount}</div>
-                          <div className="text-xs text-gray-400">{bundle.type === 'COURSE' ? 'Courses' : 'Modules'}</div>
-                        </div>
-                        <div className="bg-white/5 rounded-lg p-3 text-center">
-                          <div className="text-lg font-bold text-white">{bundle.viewCount}</div>
-                          <div className="text-xs text-gray-400">Views</div>
-                        </div>
-                        <div className="bg-white/5 rounded-lg p-3 text-center">
-                          <div className="text-lg font-bold text-white">{bundle.salesCount}</div>
-                          <div className="text-xs text-gray-400">Sales</div>
-                        </div>
-                      </div> */}
-
-                      {/* Pricing */}
-                      <div className="mb-4 p-4 bg-white/5 rounded-2xl">
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="text-2xl font-bold text-white">${bundle.finalPrice.toFixed(2)}</span>
-                          {savings > 0 && (
-                            <span className="text-gray-400 line-through">${bundle.totalPrice.toFixed(2)}</span>
-                          )}
-                        </div>
-                        {savings > 0 && (
-                          <div className="text-green-400 font-medium text-sm">
-                            Save ${savings.toFixed(2)} ({percentage}% off)
-                          </div>
-                        )}
-                        {bundle.revenue > 0 && (
-                          <div className="text-blue-400 text-sm mt-1">
-                            Revenue: ${bundle.revenue.toFixed(2)}
-                          </div>
-                        )}
+                    {/* Bundle Stats */}
+                    <div className="grid grid-cols-3 gap-4 mb-4 p-3 bg-white/5 rounded-2xl">
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-white">{bundle.totalItems}</p>
+                        <p className="text-xs text-gray-400">Items</p>
                       </div>
-
-                      {/* Actions */}
-                      <div className="space-y-3">
-                        <Link
-                          href={`/bundles/${bundle.id}`}
-                          className="block w-full py-2 text-center bg-white/10 hover:bg-white/20 text-white rounded-xl font-medium transition-colors"
-                        >
-                          View Details
-                        </Link>
-                        
-                        {bundle.isPurchased ? (
-                          <div className="flex items-center justify-center p-3 bg-green-500/20 border border-green-500/30 text-green-300 rounded-xl font-medium">
-                            <CheckCircleIcon className="w-5 h-5 mr-2" />
-                            Bundle Purchased
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handlePurchaseBundle(bundle.id)}
-                            disabled={purchaseLoading === bundle.id}
-                            className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl font-semibold transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                          >
-                            {purchaseLoading === bundle.id ? (
-                              <>
-                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                Processing...
-                              </>
-                            ) : (
-                              <>
-                                <ShoppingCartIcon className="w-5 h-5" />
-                                Purchase - ${bundle.finalPrice.toFixed(2)}
-                              </>
-                            )}
-                          </button>
-                        )}
-                        
-                        {!bundle.isPurchased && (
-                          <button
-                            onClick={() => handleDeleteBundle(bundle.id)}
-                            className="w-full py-2 bg-red-600/20 border border-red-600/30 hover:bg-red-600/30 text-red-400 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-                          >
-                            <TrashIcon className="w-4 h-4" />
-                            Delete Bundle
-                          </button>
-                        )}
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-blue-400">{bundle.salesCount}</p>
+                        <p className="text-xs text-gray-400">Sales</p>
                       </div>
-
-                      {/* Created Date */}
-                      <div className="mt-4 flex items-center justify-center gap-1 text-xs text-gray-500">
-                        <ClockIcon className="w-3 h-3" />
-                        <span>Created {new Date(bundle.createdAt).toLocaleDateString()}</span>
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-green-400">${bundle.revenue.toFixed(0)}</p>
+                        <p className="text-xs text-gray-400">Revenue</p>
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* Pricing */}
+                    <div className="mb-4 p-4 bg-white/5 rounded-2xl">
+                      <div className="flex items-center gap-3 mb-2">
+                        <span className="text-2xl font-bold text-white">${bundle.finalPrice.toFixed(2)}</span>
+                        {bundle.savings > 0 && (
+                          <span className="text-gray-400 line-through">${bundle.individualTotal.toFixed(2)}</span>
+                        )}
+                      </div>
+                      {bundle.savings > 0 && (
+                        <div className="text-green-400 font-medium text-sm">
+                          Save ${bundle.savings.toFixed(2)} ({bundle.savingsPercentage}% off)
+                        </div>
+                      )}
+                      <div className="flex items-center gap-4 text-xs text-gray-400 mt-2">
+                        <div className="flex items-center gap-1">
+                          <EyeIcon className="w-3 h-3" />
+                          <span>{bundle.viewCount} views</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <ClockIcon className="w-3 h-3" />
+                          <span>{new Date(bundle.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="space-y-3">
+                      <Link
+                        href={`/bundles/${bundle.id}`}
+                        className="block w-full py-2 text-center bg-white/10 hover:bg-white/20 text-white rounded-xl font-medium transition-colors"
+                      >
+                        View Details
+                      </Link>
+                      
+                      {bundle.canDelete && (
+                        <button
+                          onClick={() => handleDeleteBundle(bundle.id)}
+                          className="w-full py-2 bg-red-600/20 border border-red-600/30 hover:bg-red-600/30 text-red-400 rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                          Delete Bundle
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -504,7 +601,7 @@ export default function BundlesPage() {
         {activeTab === 'analytics' && analytics && (
           <div className="space-y-8">
             {/* Overview Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-blue-500/20 rounded-xl">
@@ -552,47 +649,37 @@ export default function BundlesPage() {
                   </div>
                 </div>
               </div>
-
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-orange-500/20 rounded-xl">
-                    <CheckCircleIcon className="w-6 h-6 text-orange-400" />
-                  </div>
-                  <div>
-                    <p className="text-gray-400 text-sm">Active Bundles</p>
-                    <p className="text-2xl font-bold text-white">{analytics.overview.activeBundles}</p>
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* Bundle Type Distribution */}
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-              <h3 className="text-xl font-bold text-white mb-4">Bundle Performance by Type</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {analytics.bundleTypeStats.map((stat) => (
-                  <div key={stat.type} className="bg-white/5 rounded-xl p-4">
-                    <h4 className="font-semibold text-white mb-3">
-                      {stat.type === 'COURSE' ? 'Course Bundles' : 'Module Bundles'} ({stat._count.id})
-                    </h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Total Revenue:</span>
-                        <span className="text-green-400 font-medium">${(stat._sum.revenue || 0).toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Total Sales:</span>
-                        <span className="text-blue-400 font-medium">{stat._sum.salesCount || 0}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-400">Total Views:</span>
-                        <span className="text-purple-400 font-medium">{stat._sum.viewCount || 0}</span>
+            {analytics.bundleTypeStats.length > 0 && (
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                <h3 className="text-xl font-bold text-white mb-4">Bundle Performance by Type</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {analytics.bundleTypeStats.map((stat) => (
+                    <div key={stat.type} className="bg-white/5 rounded-xl p-4">
+                      <h4 className="font-semibold text-white mb-3">
+                        {stat.type === 'COURSE' ? 'Course Bundles' : 'Module Bundles'} ({stat._count.id})
+                      </h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Total Revenue:</span>
+                          <span className="text-green-400 font-medium">${(stat._sum.revenue || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Total Sales:</span>
+                          <span className="text-blue-400 font-medium">{stat._sum.salesCount || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Total Views:</span>
+                          <span className="text-purple-400 font-medium">{stat._sum.viewCount || 0}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Top Performing Bundles */}
             {analytics.topBundles.length > 0 && (
