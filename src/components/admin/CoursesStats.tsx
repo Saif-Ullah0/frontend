@@ -1,93 +1,74 @@
-// frontend/src/components/admin/CoursesStats.tsx
-"use client";
-
-import { 
-  AcademicCapIcon, 
-  GiftIcon,
-  BanknotesIcon
-} from '@heroicons/react/24/outline';
-
+// components/admin/CoursesStats.tsx - Removed Total Revenue card
 interface CoursesStatsProps {
   totalCourses: number;
   freeCourses: number;
   paidCourses: number;
-  // totalEnrollments: number; // Removed
-  // totalRevenue: number;   // Removed
+  publishedCourses: number;
+  draftCourses: number;
+  totalEnrollments: number;
+  totalRevenue: number;
 }
 
 export default function CoursesStats({ 
-  totalCourses, 
-  freeCourses, 
-  paidCourses, 
+  totalCourses,
+  freeCourses,
+  paidCourses,
+  publishedCourses,
+  draftCourses
 }: CoursesStatsProps) {
-  
-
-  const stats = [
-    {
-      name: 'Total Courses',
-      value: totalCourses.toLocaleString(),
-      icon: AcademicCapIcon,
-      color: 'from-blue-500 to-blue-600',
-      bgColor: 'from-blue-500/20 to-blue-600/20',
-      description: 'Active courses'
-    },
-    {
-      name: 'Free Courses',
-      value: freeCourses.toLocaleString(),
-      icon: GiftIcon,
-      color: 'from-green-500 to-green-600',
-      bgColor: 'from-green-500/20 to-green-600/20',
-      description: 'No cost courses'
-    },
-    {
-      name: 'Paid Courses',
-      value: paidCourses.toLocaleString(),
-      icon: BanknotesIcon,
-      color: 'from-yellow-500 to-yellow-600',
-      bgColor: 'from-yellow-500/20 to-yellow-600/20',
-      description: 'Premium courses'
-    }
-    // Removed Total Enrollments and Total Revenue entries
-  ];
-
   return (
-    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"> {/* Adjusted grid-cols-3 for 3 stats */}
-      {stats.map((stat) => (
-        <div
-          key={stat.name}
-          className="group relative overflow-hidden rounded-2xl bg-white/10 backdrop-blur-lg border border-white/20 p-6 hover:bg-white/20 transition-all duration-300 hover:scale-105"
-        >
-          {/* Background gradient */}
-          <div className={`absolute inset-0 bg-gradient-to-br ${stat.bgColor} opacity-50 group-hover:opacity-70 transition-opacity`}></div>
-          
-          {/* Glow effect */}
-          <div className={`absolute -inset-1 bg-gradient-to-r ${stat.color} opacity-20 blur-lg group-hover:opacity-30 transition-opacity`}></div>
-          
-          {/* Content */}
-          <div className="relative">
-            <div className="flex items-center justify-between">
-              <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-r ${stat.color} shadow-lg`}>
-                <stat.icon className="h-6 w-6 text-white" />
-              </div>
-            </div>
-            
-            <div className="mt-4">
-              <div className="text-2xl font-bold text-white group-hover:text-white transition-colors">
-                {stat.value}
-              </div>
-              <div className="text-sm font-medium text-gray-300 group-hover:text-gray-200 transition-colors">
-                {stat.name}
-              </div>
-              <div className="text-xs text-gray-400 mt-1">
-                {stat.description}
-              </div>
-            </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Total Courses */}
+      <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-blue-500/20 rounded-xl">
+            <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
           </div>
-          
-          {/* Animated border */}
-          <div className="absolute inset-0 rounded-2xl border-2 border-transparent group-hover:border-white/30 transition-all duration-300"></div>
+          <div>
+            <p className="text-gray-400 text-sm">Total Courses</p>
+            <p className="text-2xl font-bold text-white">{totalCourses}</p>
+            <p className="text-xs text-gray-500 mt-1">{publishedCourses} published, {draftCourses} draft</p>
+          </div>
         </div>
-      ))}
+      </div>
+
+      {/* Free Courses */}
+      <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-emerald-500/20 rounded-xl">
+            <svg className="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm">Free Courses</p>
+            <p className="text-2xl font-bold text-white">{freeCourses}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {totalCourses > 0 ? Math.round((freeCourses / totalCourses) * 100) : 0}% of total courses
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Paid Courses */}
+      <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-yellow-500/20 rounded-xl">
+            <svg className="w-6 h-6 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-gray-400 text-sm">Paid Courses</p>
+            <p className="text-2xl font-bold text-white">{paidCourses}</p>
+            <p className="text-xs text-gray-500 mt-1">
+              {totalCourses > 0 ? Math.round((paidCourses / totalCourses) * 100) : 0}% of total courses
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

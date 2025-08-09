@@ -1,994 +1,860 @@
-// /components/CourseDetail.tsx - Updated with Module Shop Link
-'use client';
-import FastEnrollment from '@/components/FastEnrollment';
+"use client";
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { 
-  Play, 
-  Clock, 
-  Users, 
-  Star, 
-  BookOpen, 
-  Award, 
-  CheckCircle2,
-  Heart,
-  Share2,
-  Globe,
-  Monitor,
-  ArrowLeft,
-  ChevronDown,
-  ChevronUp,
-  User,
-  Target,
-  Zap,
-  Shield,
-  Infinity,
-  Trophy,
-  MessageCircle,
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import {
+  BookOpenIcon,
+  ClockIcon,
+  PlayCircleIcon,
+  CheckCircleIcon,
+  AcademicCapIcon,
+  ChartBarIcon,
+  CurrencyDollarIcon,
+  StarIcon,
+  UserGroupIcon,
+  GlobeAltIcon,
+  LockClosedIcon,
+  FolderIcon,
+  DocumentTextIcon,
+  VideoCameraIcon,
+  QuestionMarkCircleIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   ShoppingCartIcon,
-  Lock,
-  DollarSign,
-  Package
-} from 'lucide-react';
+  EyeIcon,
+  CalendarIcon,
+  TagIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ShoppingBagIcon,
+  SparklesIcon,
+  InformationCircleIcon,
+  ExclamationTriangleIcon
+} from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 
-type Module = {
-  id: number;
-  title: string;
-  description?: string;
-  duration?: number;
-  order: number;
-  isPreview?: boolean;
-  // NEW: Payment fields
-  price?: number;
-  isFree?: boolean;
-  isPublished?: boolean;
-};
-
-type Course = {
+interface Course {
   id: number;
   title: string;
   description: string;
-  price: number;
   imageUrl?: string;
+  price: number;
+  duration: number;
+  level: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
+  publishStatus: 'DRAFT' | 'PUBLISHED';
   category: {
     id: number;
     name: string;
+    description?: string;
+    courseCount?: number;
+  };
+  creator: {
+    id: number;
+    name: string;
+    email: string;
+    bio?: string;
+    isAdmin: boolean;
   };
   modules: Module[];
-  instructor?: {
-    name: string;
-    bio?: string;
-    avatar?: string;
-    rating?: number;
-    studentsCount?: number;
-  };
+  enrollmentCount: number;
   rating?: number;
-  studentsCount?: number;
-  duration?: string;
-  level?: string;
-  language?: string;
-  lastUpdated?: string;
-  requirements?: string[];
-  whatYouWillLearn?: string[];
-  includes?: string[];
-};
+  reviewCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
 
-type CourseDetailProps = {
-  course: Course;
-};
+interface Module {
+  id: number;
+  title: string;
+  description?: string;
+  duration: number;
+  orderIndex: number;
+  isPublished: boolean;
+  chapters: Chapter[];
+  isCompleted?: boolean;
+  progress?: number;
+}
 
-// NEW: Module ownership tracking
-type ModuleOwnership = {
-  [moduleId: number]: boolean;
-};
+interface Chapter {
+  id: number;
+  title: string;
+  content?: string;
+  videoUrl?: string;
+  type: 'VIDEO' | 'TEXT' | 'QUIZ';
+  duration: number;
+  orderIndex: number;
+  isPublished: boolean;
+  isCompleted?: boolean;
+  isFree?: boolean;
+}
 
-export default function CourseDetail({ course }: CourseDetailProps) {
-  const router = useRouter();
-  const [isEnrolled, setIsEnrolled] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [checkingEnrollment, setCheckingEnrollment] = useState(true);
-  const [expandedModule, setExpandedModule] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'curriculum' | 'instructor' | 'reviews'>('overview');
-  const [isFavorited, setIsFavorited] = useState(false);
-  // NEW: Module ownership state
-  const [moduleOwnership, setModuleOwnership] = useState<ModuleOwnership>({});
-  const [loadingModuleOwnership, setLoadingModuleOwnership] = useState(true);
+interface Bundle {
+  id: number;
+  name: string;
+  description?: string;
+  type: 'COURSE';
+  finalPrice: number;
+  totalPrice: number;
+  discount: number;
+  savings: number;
+  savingsPercentage: number;
+  isFeatured: boolean;
+  isPopular: boolean;
+  totalItems: number;
+  courseItems: Array<{
+    course: {
+      id: number;
+      title: string;
+      price: number;
+      imageUrl?: string;
+    };
+  }>;
+}
 
-  // Enhanced course data with mock information
-  const enhancedCourse = {
-    ...course,
-    instructor: course.instructor || {
-      name: 'Dr. Sarah Johnson',
-      bio: 'Senior Software Engineer with 10+ years of experience in web development and education. Passionate about teaching and helping students achieve their goals.',
-      avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face',
-      rating: 4.8,
-      studentsCount: 12456
-    },
-    //rating: course.rating || 4.7,
-    //studentsCount: course.studentsCount || 8924,
-    duration: course.duration || '24 hours',
-    level: course.level || 'Intermediate',
-    language: course.language || 'English',
-    lastUpdated: course.lastUpdated || 'December 2024',
-    requirements: course.requirements || [
-      'Basic understanding of web development',
-      'Familiarity with HTML, CSS, and JavaScript',
-      'A computer with internet connection',
-      'Desire to learn and practice'
-    ],
-    whatYouWillLearn: course.whatYouWillLearn || [
-      'Master advanced React concepts and patterns',
-      'Build scalable applications with TypeScript',
-      'Implement state management with Redux Toolkit',
-      'Create responsive and accessible user interfaces',
-      'Optimize performance and handle testing',
-      'Deploy applications to production environments'
-    ],
-    includes: course.includes || [
-      '24 hours of on-demand video',
-      '45 downloadable resources',
-      'Lifetime access to course materials',
-      'Certificate of completion',
-      'Direct instructor support',
-      'Community access'
-    ]
-  };
+interface UserEnrollment {
+  id: number;
+  progress: number;
+  lastAccessed: string;
+  enrolledAt: string;
+  completed: boolean;
+}
 
-  const totalModules = enhancedCourse.modules.length;
-  const previewModules = enhancedCourse.modules.filter(m => m.isPreview).length;
-  const totalDuration = enhancedCourse.modules.reduce((acc, module) => acc + (module.duration || 0), 0);
+export default function CourseDetailPage() {
+  const params = useParams();
+  const courseId = params.courseId as string;
   
-  // NEW: Calculate module pricing stats
-  const paidModules = enhancedCourse.modules.filter(m => m.price && m.price > 0);
-  const freeModules = enhancedCourse.modules.filter(m => !m.price || m.price === 0 || m.isFree);
-  const totalModulePrice = paidModules.reduce((sum, m) => sum + (m.price || 0), 0);
-  const ownedModules = Object.values(moduleOwnership).filter(Boolean).length;
+  const [course, setCourse] = useState<Course | null>(null);
+  const [bundles, setBundles] = useState<Bundle[]>([]);
+  const [enrollment, setEnrollment] = useState<UserEnrollment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [enrollLoading, setEnrollLoading] = useState(false);
+  const [expandedModules, setExpandedModules] = useState<Set<number>>(new Set());
+  const [activeTab, setActiveTab] = useState<'overview' | 'curriculum' | 'bundles' | 'instructor'>('overview');
 
   useEffect(() => {
-    const checkEnrollmentStatus = async () => {
-      try {
-        const res = await fetch(`http://localhost:5000/api/enroll/check/${course.id}`, {
-          credentials: 'include',
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
-          setIsEnrolled(data.isEnrolled);
-        }
-      } catch (error) {
-        console.error('Error checking enrollment:', error);
-      } finally {
-        setCheckingEnrollment(false);
-      }
-    };
-
-    checkEnrollmentStatus();
-  }, [course.id]);
-
-  // NEW: Check module ownership
-  useEffect(() => {
-    const fetchModuleOwnership = async () => {
-      try {
-        setLoadingModuleOwnership(true);
-        const ownership: ModuleOwnership = {};
-        
-        // Check ownership for each module
-        for (const module of enhancedCourse.modules) {
-          try {
-            const response = await fetch(`http://localhost:5000/api/payment/modules/${module.id}`, {
-              credentials: 'include'
-            });
-            
-            if (response.ok) {
-              const data = await response.json();
-              ownership[module.id] = data.isOwned || false;
-            } else {
-              ownership[module.id] = false;
-            }
-          } catch (error) {
-            ownership[module.id] = false;
-          }
-        }
-        
-        setModuleOwnership(ownership);
-      } catch (error) {
-        console.error('Failed to fetch module ownership:', error);
-      } finally {
-        setLoadingModuleOwnership(false);
-      }
-    };
-
-    fetchModuleOwnership();
-  }, [course.id]);
-
-  // Handle enrollment (original logic for Stripe redirect)
-  const handleEnroll = async () => {
-    setLoading(true);
-    
-    try {
-      if (enhancedCourse.price === 0) {
-        // Free course enrollment
-        const res = await fetch('http://localhost:5000/api/enroll', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ courseId: course.id }),
-          credentials: 'include',
-        });
-
-        if (res.ok) {
-          toast.success('Successfully enrolled! Welcome aboard! 🎉');
-          setIsEnrolled(true);
-          router.push(`/courses/${course.id}/modules`);
-        } else {
-          const data = await res.json();
-          toast.error(data.error || 'Enrollment failed');
-        }
-      } else {
-        // Paid course - redirect to Stripe hosted checkout
-        const res = await fetch('http://localhost:5000/api/payment/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            courseId: course.id
-          }),
-          credentials: 'include',
-        });
-
-        if (res.ok) {
-          const { url } = await res.json();
-          window.location.href = url; // Redirect to Stripe hosted checkout
-        } else {
-          const data = await res.json();
-          toast.error(data.error || 'Failed to create payment session');
-        }
-      }
-    } catch (error) {
-      console.error('Enrollment error:', error);
-      toast.error('Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
+    if (courseId) {
+      fetchCourseDetails();
+      fetchRelatedBundles();
+      fetchUserEnrollment();
     }
-  };
+  }, [courseId]);
 
-  // Handle successful enrollment from FastEnrollment component (for free courses only)
-  const handleEnrollmentSuccess = (result: any) => {
-    // Update enrollment status
-    setIsEnrolled(true);
+ const fetchCourseDetails = async () => {
+  try {
+    console.log('🎓 STARTING fetchCourseDetails for:', courseId);
     
-    // Show success message
-    toast.success(result.message || 'Enrollment successful! 🎉');
-    
-    // Redirect to course modules
-    if (result.redirectUrl) {
-      window.location.href = result.redirectUrl;
+    const response = await fetch(`http://localhost:5000/api/courses/${courseId}`, {
+      credentials: 'include'
+    });
+
+    console.log('📡 Response status:', response.status, 'OK:', response.ok);
+
+    if (response.ok) {
+      const data = await response.json();
+      console.log('✅ API returned data:', data);
+      
+      setCourse(data.course);
+      console.log('✅ Course state updated');
     } else {
-      router.push(`/courses/${course.id}/modules`);
+      console.error('❌ API error:', response.status);
+      const errorData = await response.json();
+      toast.error(errorData.message || 'Failed to load course details');
     }
-  };
+  } catch (error) {
+    console.error('❌ Fetch error:', error);
+    toast.error('Failed to load course details');
+  } finally {
+    console.log('🏁 Setting loading to false');
+    setLoading(false);
+  }
+};
 
-  // NEW: Handle individual module purchase
-  const handleModulePurchase = async (moduleId: number) => {
+  const fetchRelatedBundles = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/payment/modules/purchase', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ moduleId }),
+      const response = await fetch(`http://localhost:5000/api/bundles?type=COURSE&search=${courseId}`, {
         credentials: 'include'
       });
 
-      const data = await response.json();
-
       if (response.ok) {
-        if (data.checkoutUrl) {
-          window.location.href = data.checkoutUrl;
-        } else if (data.success) {
-          toast.success(data.message);
-          // Refresh ownership
-          setModuleOwnership(prev => ({ ...prev, [moduleId]: true }));
-        }
-      } else {
-        toast.error(data.error || 'Purchase failed');
+        const data = await response.json();
+        // Filter bundles that include this course
+        const relatedBundles = data.bundles?.filter((bundle: Bundle) => 
+          bundle.courseItems?.some(item => item.course.id === parseInt(courseId))
+        ) || [];
+        setBundles(relatedBundles);
       }
     } catch (error) {
+      console.error('Error fetching related bundles:', error);
+    }
+  };
+
+  const fetchUserEnrollment = async () => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/enrollments/course/${courseId}`, {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setEnrollment(data.enrollment);
+      }
+    } catch (error) {
+      console.error('Error fetching enrollment:', error);
+    }
+  };
+
+  const handleEnrollment = async () => {
+    if (!course) return;
+    
+    setEnrollLoading(true);
+    
+    try {
+      if (course.price === 0) {
+        // Free course - direct enrollment
+        const response = await fetch(`http://localhost:5000/api/enrollments/enroll`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ courseId: course.id }),
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          toast.success('Successfully enrolled in course!');
+          fetchUserEnrollment();
+        } else {
+          const errorData = await response.json();
+          toast.error(errorData.message || 'Failed to enroll');
+        }
+      } else {
+        // Paid course - redirect to payment
+        const response = await fetch(`http://localhost:5000/api/courses/purchase`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ courseId: course.id }),
+          credentials: 'include'
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.checkoutUrl) {
+            window.location.href = data.checkoutUrl;
+          }
+        } else {
+          const errorData = await response.json();
+          toast.error(errorData.message || 'Failed to start purchase');
+        }
+      }
+    } catch (error) {
+      console.error('Error enrolling in course:', error);
+      toast.error('Something went wrong');
+    } finally {
+      setEnrollLoading(false);
+    }
+  };
+
+  const handleBundlePurchase = async (bundleId: number) => {
+    try {
+      const response = await fetch('http://localhost:5000/api/bundles/purchase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bundleId }),
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.checkoutUrl) {
+          window.location.href = data.checkoutUrl;
+        }
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.message || 'Failed to purchase bundle');
+      }
+    } catch (error) {
+      console.error('Error purchasing bundle:', error);
       toast.error('Something went wrong');
     }
   };
 
-  const handleShare = async () => {
-    const shareData = {
-      title: enhancedCourse.title,
-      text: `Check out this amazing course: ${enhancedCourse.title}`,
-      url: window.location.href,
-    };
-
-    if (navigator.share) {
-      try {
-        await navigator.share(shareData);
-      } catch (error) {
-        // Fallback to clipboard
-        navigator.clipboard.writeText(window.location.href);
-        toast.success('Course link copied to clipboard!');
-      }
+  const toggleModule = (moduleId: number) => {
+    const newExpanded = new Set(expandedModules);
+    if (newExpanded.has(moduleId)) {
+      newExpanded.delete(moduleId);
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      toast.success('Course link copied to clipboard!');
+      newExpanded.add(moduleId);
+    }
+    setExpandedModules(newExpanded);
+  };
+
+  const getChapterIcon = (type: string) => {
+    switch (type) {
+      case 'VIDEO':
+        return VideoCameraIcon;
+      case 'QUIZ':
+        return QuestionMarkCircleIcon;
+      default:
+        return DocumentTextIcon;
     }
   };
 
-  const toggleFavorite = () => {
-    setIsFavorited(!isFavorited);
-    toast.success(isFavorited ? 'Removed from favorites' : 'Added to favorites');
+  const getLevelColor = (level: string) => {
+    switch (level) {
+      case 'BEGINNER':
+        return 'bg-green-500/20 text-green-400';
+      case 'INTERMEDIATE':
+        return 'bg-yellow-500/20 text-yellow-400';
+      case 'ADVANCED':
+        return 'bg-red-500/20 text-red-400';
+      default:
+        return 'bg-gray-500/20 text-gray-400';
+    }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] flex items-center justify-center">
+        <div className="flex items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+          <span className="text-white">Loading course details...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!course) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] flex items-center justify-center">
+        <div className="text-center">
+          <ExclamationTriangleIcon className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-4">Course Not Found</h2>
+          <p className="text-gray-400 mb-6">The course you're looking for doesn't exist or has been removed.</p>
+          <Link
+            href="/courses"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors"
+          >
+            <BookOpenIcon className="w-5 h-5" />
+            Browse All Courses
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const publishedModules = course.modules.filter(m => m.isPublished).sort((a, b) => a.orderIndex - b.orderIndex);
+  const totalChapters = publishedModules.reduce((sum, module) => 
+    sum + module.chapters.filter(c => c.isPublished).length, 0
+  );
+  const completedChapters = publishedModules.reduce((sum, module) => 
+    sum + module.chapters.filter(c => c.isCompleted).length, 0
+  );
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] text-white relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e]">
       {/* Background Effects */}
       <div className="absolute top-[-100px] left-[-100px] w-[500px] h-[500px] bg-gradient-to-r from-blue-500/15 to-purple-500/15 blur-[160px] rounded-full animate-pulse-slow"></div>
-      <div className="absolute bottom-[-100px] right-[-100px] w-[400px] h-[400px] bg-gradient-to-r from-purple-500/15 to-pink-500/15 blur-[140px] rounded-full animate-pulse-slower"></div>
 
-      <div className="relative z-10">
-        {/* Navigation */}
-        <div className="bg-white/5 border-b border-white/10 backdrop-blur-xl sticky top-0 z-20">
-          <div className="max-w-7xl mx-auto px-6 py-4">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.back()}
-                className="p-2 hover:bg-white/10 rounded-lg transition-all duration-300 group"
-              >
-                <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
-              </button>
-              <div className="flex-1">
-                <h1 className="text-xl font-semibold text-white truncate">{enhancedCourse.title}</h1>
-                <p className="text-gray-400 text-sm">{enhancedCourse.category.name}</p>
+      <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
+          <Link href="/courses" className="hover:text-white transition-colors">Courses</Link>
+          <ChevronRightIcon className="w-4 h-4" />
+          <Link href={`/categories/${course.category.id}`} className="hover:text-white transition-colors">
+            {course.category.name}
+          </Link>
+          <ChevronRightIcon className="w-4 h-4" />
+          <span className="text-white">{course.title}</span>
+        </div>
+
+        {/* Course Header */}
+        <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Course Image */}
+            <div className="lg:col-span-1">
+              <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-blue-500/20 to-purple-500/20 aspect-video">
+                {course.imageUrl ? (
+                  <img
+                    src={course.imageUrl}
+                    alt={course.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <AcademicCapIcon className="w-20 h-20 text-white/50" />
+                  </div>
+                )}
+                
+                {/* Price Badge */}
+                <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-xl rounded-xl px-4 py-2">
+                  <div className="text-2xl font-bold text-white">
+                    {course.price === 0 ? 'Free' : `$${course.price.toFixed(2)}`}
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={toggleFavorite}
-                  className={`p-3 rounded-xl transition-all duration-300 ${
-                    isFavorited 
-                      ? 'bg-red-500/20 border border-red-500/30 text-red-400' 
-                      : 'bg-white/10 border border-white/20 text-gray-400 hover:text-red-400'
-                  }`}
-                >
-                  <Heart className={`w-5 h-5 ${isFavorited ? 'fill-current' : ''}`} />
-                </button>
-                <button
-                  onClick={handleShare}
-                  className="p-3 bg-white/10 border border-white/20 rounded-xl hover:bg-white/20 transition-all duration-300"
-                >
-                  <Share2 className="w-5 h-5" />
-                </button>
+
+              {/* Enrollment Actions */}
+              <div className="mt-6 space-y-4">
+                {enrollment ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-green-400 bg-green-500/20 px-4 py-2 rounded-xl">
+                      <CheckCircleIcon className="w-5 h-5" />
+                      <span>Enrolled</span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400">Progress</span>
+                        <span className="text-white font-medium">{Math.round(enrollment.progress)}%</span>
+                      </div>
+                      <div className="w-full bg-gray-700 rounded-full h-2">
+                        <div 
+                          className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(100, enrollment.progress)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+
+                    <Link
+                      href={`/courses/${course.id}/learn`}
+                      className="block w-full py-3 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white rounded-xl font-semibold transition-all duration-300 text-center"
+                    >
+                      Continue Learning
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <button
+                      onClick={handleEnrollment}
+                      disabled={enrollLoading}
+                      className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {enrollLoading ? (
+                        <>
+                          <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          {course.price === 0 ? (
+                            <>
+                              <BookOpenIcon className="w-5 h-5" />
+                              Enroll for Free
+                            </>
+                          ) : (
+                            <>
+                              <ShoppingCartIcon className="w-5 h-5" />
+                              Purchase Course - ${course.price.toFixed(2)}
+                            </>
+                          )}
+                        </>
+                      )}
+                    </button>
+
+                    {/* Bundle Options */}
+                    {bundles.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-sm text-gray-400 mb-3">Or save with a bundle:</p>
+                        <div className="space-y-2">
+                          {bundles.slice(0, 2).map((bundle) => (
+                            <div key={bundle.id} className="bg-white/5 border border-white/10 rounded-xl p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="font-medium text-white text-sm">{bundle.name}</h4>
+                                <div className="flex items-center gap-2">
+                                  {bundle.isFeatured && (
+                                    <SparklesIcon className="w-4 h-4 text-yellow-400" />
+                                  )}
+                                  <span className="text-green-400 font-bold">${bundle.finalPrice.toFixed(2)}</span>
+                                  <span className="text-gray-400 line-through text-sm">${bundle.totalPrice.toFixed(2)}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-400">{bundle.totalItems} courses</span>
+                                <span className="text-xs text-green-400">Save {bundle.savingsPercentage}%</span>
+                              </div>
+                              <button
+                                onClick={() => handleBundlePurchase(bundle.id)}
+                                className="w-full mt-2 py-2 bg-green-600/20 border border-green-600/30 hover:bg-green-600/30 text-green-400 rounded-lg font-medium transition-colors text-sm"
+                              >
+                                Purchase Bundle
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Course Information */}
+            <div className="lg:col-span-2">
+              <div className="flex items-center gap-3 mb-4">
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  course.category.name === 'Web Development' ? 'bg-blue-500/20 text-blue-400' :
+                  course.category.name === 'Data Science' ? 'bg-purple-500/20 text-purple-400' :
+                  course.category.name === 'Mobile Development' ? 'bg-green-500/20 text-green-400' :
+                  'bg-gray-500/20 text-gray-400'
+                }`}>
+                  {course.category.name}
+                </span>
+                <span className={`px-3 py-1 rounded-full text-sm font-medium ${getLevelColor(course.level)}`}>
+                  {course.level}
+                </span>
+              </div>
+
+              <h1 className="text-4xl font-bold text-white mb-4">{course.title}</h1>
+              <p className="text-gray-300 text-lg leading-relaxed mb-6">{course.description}</p>
+
+              {/* Course Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-white/5 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <FolderIcon className="w-6 h-6 text-blue-400" />
+                    <div>
+                      <p className="text-gray-400 text-sm">Modules</p>
+                      <p className="text-white font-bold">{publishedModules.length}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <DocumentTextIcon className="w-6 h-6 text-purple-400" />
+                    <div>
+                      <p className="text-gray-400 text-sm">Chapters</p>
+                      <p className="text-white font-bold">{totalChapters}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <ClockIcon className="w-6 h-6 text-green-400" />
+                    <div>
+                      <p className="text-gray-400 text-sm">Duration</p>
+                      <p className="text-white font-bold">{Math.round(course.duration / 60)}h</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <UserGroupIcon className="w-6 h-6 text-yellow-400" />
+                    <div>
+                      <p className="text-gray-400 text-sm">Students</p>
+                      <p className="text-white font-bold">{course.enrollmentCount}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Instructor Info */}
+              <div className="bg-white/5 rounded-xl p-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                    <span className="text-white font-bold text-lg">
+                      {course.creator.name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-white">{course.creator.name}</h4>
+                    <p className="text-gray-400 text-sm">Course Instructor</p>
+                    {course.creator.isAdmin && (
+                      <span className="inline-block mt-1 px-2 py-1 bg-orange-500/20 text-orange-400 text-xs rounded-full">
+                        Verified Instructor
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Main Content */}
-            <div className="lg:col-span-2 space-y-8">
-              {/* Course Header */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl">
-                <div className="flex items-start justify-between mb-6">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="px-3 py-1 bg-blue-500/20 border border-blue-500/30 rounded-full text-sm text-blue-300 font-medium">
-                        {enhancedCourse.level}
-                      </span>
-                      <span className="px-3 py-1 bg-purple-500/20 border border-purple-500/30 rounded-full text-sm text-purple-300 font-medium">
-                        {enhancedCourse.category.name}
-                      </span>
-                      {/* NEW: Module-wise purchase indicator */}
-                      {paidModules.length > 0 && (
-                        <span className="px-3 py-1 bg-orange-500/20 border border-orange-500/30 rounded-full text-sm text-orange-300 font-medium flex items-center gap-1">
-                          <Package className="w-3 h-3" />
-                          Individual Modules Available
-                        </span>
-                      )}
-                    </div>
-                    
-                    <h1 className="text-3xl font-bold text-white mb-4">{enhancedCourse.title}</h1>
-                    <p className="text-gray-300 text-lg mb-6">{enhancedCourse.description}</p>
-                    
-                    {/* <div className="flex items-center gap-6 text-sm text-gray-400">
-                      <div className="flex items-center gap-1">
-                        <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                        <span>{enhancedCourse.rating}</span>
-                        <span>({enhancedCourse.studentsCount?.toLocaleString()} students)</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4" />
-                        <span>{enhancedCourse.duration}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <BookOpen className="w-4 h-4" />
-                        <span>{totalModules} modules</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Globe className="w-4 h-4" />
-                        <span>{enhancedCourse.language}</span>
-                      </div>
-                    </div> */}
-                  </div>
+        {/* Tab Navigation */}
+        <div className="flex bg-white/5 border border-white/10 rounded-xl p-1 mb-8 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 whitespace-nowrap ${
+              activeTab === 'overview'
+                ? 'bg-blue-500 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <InformationCircleIcon className="w-4 h-4" />
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('curriculum')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 whitespace-nowrap ${
+              activeTab === 'curriculum'
+                ? 'bg-purple-500 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <FolderIcon className="w-4 h-4" />
+            Curriculum ({publishedModules.length})
+          </button>
+          {bundles.length > 0 && (
+            <button
+              onClick={() => setActiveTab('bundles')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 whitespace-nowrap ${
+                activeTab === 'bundles'
+                  ? 'bg-green-500 text-white'
+                  : 'text-gray-400 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <ShoppingBagIcon className="w-4 h-4" />
+              Bundles ({bundles.length})
+            </button>
+          )}
+          <button
+            onClick={() => setActiveTab('instructor')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 whitespace-nowrap ${
+              activeTab === 'instructor'
+                ? 'bg-orange-500 text-white'
+                : 'text-gray-400 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <AcademicCapIcon className="w-4 h-4" />
+            Instructor
+          </button>
+        </div>
+
+        {/* Tab Content */}
+        <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl">
+          {activeTab === 'overview' && (
+            <div className="space-y-8">
+              <div>
+                <h2 className="text-2xl font-bold text-white mb-4">What You'll Learn</h2>
+                <div className="prose prose-invert max-w-none">
+                  <p className="text-gray-300 leading-relaxed">{course.description}</p>
                 </div>
               </div>
 
-              {/* NEW: Module Purchase Options (if course has paid modules) */}
-              {paidModules.length > 0 && (
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                  <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                    <Package className="w-5 h-5 text-orange-400" />
-                    Flexible Learning Options
-                  </h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Full Course Option */}
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-                      <h4 className="font-semibold text-white mb-2 flex items-center gap-2">
-                        <Trophy className="w-5 h-5 text-blue-400" />
-                        Complete Course
-                      </h4>
-                      <div className="text-2xl font-bold text-white mb-2">
-                        {enhancedCourse.price === 0 ? 'Free' : `$${enhancedCourse.price}`}
-                      </div>
-                      <p className="text-gray-400 text-sm mb-4">
-                        Get access to all {totalModules} modules at once
-                      </p>
-                      <div className="text-xs text-green-400">
-                        {enhancedCourse.price > 0 && totalModulePrice > enhancedCourse.price && (
-                          <>💰 Save ${(totalModulePrice - enhancedCourse.price).toFixed(2)} vs individual purchases</>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Individual Modules Option */}
-                    <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-                      <h4 className="font-semibold text-white mb-2 flex items-center gap-2">
-                        <ShoppingCartIcon className="w-5 h-5 text-orange-400" />
-                        Individual Modules
-                      </h4>
-                      <div className="text-2xl font-bold text-white mb-2">
-                        ${paidModules.length > 0 ? Math.min(...paidModules.map(m => m.price || 0)).toFixed(2) : '0'} - ${paidModules.length > 0 ? Math.max(...paidModules.map(m => m.price || 0)).toFixed(2) : '0'}
-                      </div>
-                      <p className="text-gray-400 text-sm mb-4">
-                        Purchase modules one by one as needed
-                      </p>
-                      <div className="text-xs text-orange-400">
-                        🎯 Perfect for targeted learning
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Quick Actions */}
-                  <div className="mt-6 flex flex-wrap gap-3">
-                    <button
-                      onClick={() => router.push(`/courses/${course.id}/modules`)}
-                      className="px-4 py-2 bg-blue-500/20 border border-blue-500/30 text-blue-300 rounded-lg hover:bg-blue-500/30 transition-colors text-sm"
-                    >
-                      View All Modules
-                    </button>
-                    {/* NEW: Module Shop Button */}
-                    <button
-                      onClick={() => router.push(`/courses/${course.id}/modules-shop`)}
-                      className="px-4 py-2 bg-orange-500/20 border border-orange-500/30 text-orange-300 rounded-lg hover:bg-orange-500/30 transition-colors text-sm flex items-center gap-2"
-                    >
-                      <ShoppingCartIcon className="w-4 h-4" />
-                      Module Shop
-                    </button>
-                    <button
-                      onClick={() => router.push('/bundles')}
-                      className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 text-purple-300 rounded-lg hover:bg-purple-500/30 transition-colors text-sm"
-                    >
-                      Create Custom Bundle
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Tab Navigation */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
-                <div className="flex border-b border-white/10">
+              {/* Learning Objectives */}
+              <div>
+                <h3 className="text-xl font-semibold text-white mb-4">Learning Objectives</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {[
-                    { key: 'overview', label: 'Overview', icon: Target },
-                    { key: 'curriculum', label: 'Curriculum', icon: BookOpen },
-                    { key: 'instructor', label: 'Instructor', icon: User },
-                    { key: 'reviews', label: 'Reviews', icon: MessageCircle }
-                  ].map(({ key, label, icon: Icon }) => (
-                    <button
-                      key={key}
-                      onClick={() => setActiveTab(key as any)}
-                      className={`flex-1 px-6 py-4 text-center transition-all duration-300 flex items-center justify-center gap-2 ${
-                        activeTab === key
-                          ? 'bg-blue-500/20 text-blue-300 border-b-2 border-blue-400'
-                          : 'text-gray-400 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4" />
-                      <span className="hidden sm:inline">{label}</span>
-                    </button>
+                    "Master the fundamentals of the subject",
+                    "Apply concepts through practical exercises",
+                    "Build real-world projects",
+                    "Develop problem-solving skills"
+                  ].map((objective, index) => (
+                    <div key={index} className="flex items-center gap-3 bg-white/5 rounded-xl p-4">
+                      <CheckCircleIcon className="w-6 h-6 text-green-400 flex-shrink-0" />
+                      <span className="text-gray-300">{objective}</span>
+                    </div>
                   ))}
                 </div>
+              </div>
 
-                <div className="p-8">
-                  {activeTab === 'overview' && (
-                    <div className="space-y-8">
-                      {/* What You'll Learn */}
-                      <div>
-                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                          <Target className="w-5 h-5 text-green-400" />
-                          What You Will Learn
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {enhancedCourse.whatYouWillLearn.map((item, index) => (
-                            <div key={index} className="flex items-start gap-3">
-                              <CheckCircle2 className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
-                              <span className="text-gray-300">{item}</span>
-                            </div>
-                          ))}
+              {/* Prerequisites */}
+              <div>
+                <h3 className="text-xl font-semibold text-white mb-4">Prerequisites</h3>
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4">
+                  <p className="text-yellow-200">
+                    {course.level === 'BEGINNER' 
+                      ? 'No prior experience required - this course is designed for complete beginners.'
+                      : course.level === 'INTERMEDIATE'
+                      ? 'Basic understanding of programming concepts recommended.'
+                      : 'Advanced knowledge in related technologies is recommended.'
+                    }
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'curriculum' && (
+            <div>
+              <h2 className="text-2xl font-bold text-white mb-6">Course Curriculum</h2>
+              <div className="space-y-4">
+                {publishedModules.map((module, moduleIndex) => (
+                  <div key={module.id} className="border border-white/10 rounded-2xl overflow-hidden">
+                    <button
+                      onClick={() => toggleModule(module.id)}
+                      className="w-full p-6 bg-white/5 hover:bg-white/10 transition-colors flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center">
+                          <span className="text-blue-400 font-semibold">{moduleIndex + 1}</span>
+                        </div>
+                        <div className="text-left">
+                          <h3 className="font-semibold text-white">{module.title}</h3>
+                          <p className="text-gray-400 text-sm">
+                            {module.chapters.filter(c => c.isPublished).length} chapters • {Math.round(module.duration / 60)} min
+                          </p>
                         </div>
                       </div>
-
-                      {/* Requirements */}
-                      <div>
-                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                          <Shield className="w-5 h-5 text-orange-400" />
-                          Requirements
-                        </h3>
-                        <ul className="space-y-2">
-                          {enhancedCourse.requirements.map((req, index) => (
-                            <li key={index} className="flex items-start gap-3 text-gray-300">
-                              <div className="w-2 h-2 bg-orange-400 rounded-full flex-shrink-0 mt-2"></div>
-                              {req}
-                            </li>
-                          ))}
-                        </ul>
+                      <div className="flex items-center gap-4">
+                        {enrollment && module.isCompleted && (
+                          <CheckCircleIcon className="w-6 h-6 text-green-400" />
+                        )}
+                        {expandedModules.has(module.id) ? (
+                          <ChevronDownIcon className="w-5 h-5 text-gray-400" />
+                        ) : (
+                          <ChevronRightIcon className="w-5 h-5 text-gray-400" />
+                        )}
                       </div>
-
-                      {/* Course Includes */}
-                      <div>
-                        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                          <Award className="w-5 h-5 text-purple-400" />
-                          This Course Includes
-                        </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {enhancedCourse.includes.map((item, index) => (
-                            <div key={index} className="flex items-center gap-3">
-                              <CheckCircle2 className="w-5 h-5 text-purple-400 flex-shrink-0" />
-                              <span className="text-gray-300">{item}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'curriculum' && (
-                    <div>
-                      <div className="flex items-center justify-between mb-6">
-                        <h3 className="text-xl font-bold text-white">Course Curriculum</h3>
-                        <div className="text-sm text-gray-400">
-                          {totalModules} modules • {Math.floor(totalDuration / 60)}h {totalDuration % 60}m total
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        {enhancedCourse.modules.map((module, index) => {
-                          const isOwned = moduleOwnership[module.id] || module.isFree || (module.price || 0) === 0;
-                          const isPaid = (module.price || 0) > 0 && !module.isFree;
-                          
-                          return (
-                            <div
-                              key={module.id}
-                              className="bg-white/5 border border-white/10 rounded-xl overflow-hidden"
-                            >
-                              <button
-                                onClick={() => setExpandedModule(expandedModule === module.id ? null : module.id)}
-                                className="w-full p-4 text-left hover:bg-white/10 transition-all duration-300 flex items-center justify-between"
-                              >
-                                <div className="flex items-center gap-4">
-                                  <div className="w-8 h-8 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-300 font-semibold text-sm">
-                                    {index + 1}
-                                  </div>
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-3 mb-1">
-                                      <h4 className="font-semibold text-white">{module.title}</h4>
-                                      {/* NEW: Module status indicators */}
-                                      {isPaid && !isOwned && (
-                                        <span className="px-2 py-1 bg-orange-500/20 text-orange-400 rounded text-xs font-medium">
-                                          ${module.price}
-                                        </span>
-                                      )}
-                                      {isOwned && isPaid && (
-                                        <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs font-medium">
-                                          Owned
-                                        </span>
-                                      )}
-                                      {module.isFree && (
-                                        <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs font-medium">
-                                          Free
-                                        </span>
-                                      )}
+                    </button>
+                    
+                    {expandedModules.has(module.id) && (
+                      <div className="border-t border-white/10">
+                        {module.chapters
+                          .filter(c => c.isPublished)
+                          .sort((a, b) => a.orderIndex - b.orderIndex)
+                          .map((chapter, chapterIndex) => {
+                            const ChapterIcon = getChapterIcon(chapter.type);
+                            return (
+                              <div key={chapter.id} className="p-4 border-b border-white/10 last:border-b-0 hover:bg-white/5 transition-colors">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-4">
+                                    <div className="w-6 h-6 bg-white/10 rounded flex items-center justify-center">
+                                      <ChapterIcon className="w-4 h-4 text-gray-400" />
                                     </div>
-                                    <div className="flex items-center gap-4 text-sm text-gray-400">
-                                      <span>{module.duration || 15} minutes</span>
-                                      {module.isPreview && (
-                                        <span className="px-2 py-1 bg-green-500/20 text-green-300 rounded text-xs">
-                                          Preview
-                                        </span>
-                                      )}
+                                    <div>
+                                      <h4 className="text-white font-medium">{chapter.title}</h4>
+                                      <p className="text-gray-400 text-sm">
+                                        {chapter.type} • {Math.round(chapter.duration / 60)} min
+                                        {chapter.isFree && (
+                                          <span className="ml-2 text-green-400">• Free Preview</span>
+                                        )}
+                                      </p>
                                     </div>
                                   </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {isPaid && !isOwned && (
-                                    <Lock className="w-4 h-4 text-orange-400" />
-                                  )}
-                                  {expandedModule === module.id ? (
-                                    <ChevronUp className="w-5 h-5 text-gray-400" />
-                                  ) : (
-                                    <ChevronDown className="w-5 h-5 text-gray-400" />
-                                  )}
-                                </div>
-                              </button>
-                              
-                              {expandedModule === module.id && (
-                                <div className="px-4 pb-4 border-t border-white/10 bg-white/5">
-                                  <p className="text-gray-300 text-sm mt-3 mb-4">
-                                    {module.description || `Learn about ${module.title.toLowerCase()} with practical examples and hands-on exercises.`}
-                                  </p>
-                                  
-                                  <div className="flex items-center gap-3">
-                                    {module.isPreview && (
-                                      <button className="px-4 py-2 bg-green-500/20 border border-green-500/30 text-green-300 rounded-lg text-sm hover:bg-green-500/30 transition-colors">
-                                        <Play className="w-4 h-4 inline mr-2" />
-                                        Watch Preview
-                                      </button>
+                                  <div className="flex items-center gap-2">
+                                    {enrollment && chapter.isCompleted ? (
+                                      <CheckCircleIcon className="w-5 h-5 text-green-400" />
+                                    ) : enrollment ? (
+                                      <PlayCircleIcon className="w-5 h-5 text-blue-400" />
+                                    ) : chapter.isFree ? (
+                                      <EyeIcon className="w-5 h-5 text-green-400" />
+                                    ) : (
+                                      <LockClosedIcon className="w-5 h-5 text-gray-400" />
                                     )}
-                                    
-                                    {/* NEW: Individual module purchase */}
-                                    {isPaid && !isOwned && !loadingModuleOwnership && (
-                                      <button
-                                        onClick={() => handleModulePurchase(module.id)}
-                                        className="px-4 py-2 bg-orange-500/20 border border-orange-500/30 text-orange-300 rounded-lg text-sm hover:bg-orange-500/30 transition-colors flex items-center gap-2"
-                                      >
-                                        <ShoppingCartIcon className="w-4 h-4" />
-                                        Buy Module - ${module.price}
-                                      </button>
-                                    )}
-                                    
-                                    {isOwned && (
-                                      <button
-                                        onClick={() => router.push(`/courses/${course.id}/modules/${module.id}`)}
-                                        className="px-4 py-2 bg-blue-500/20 border border-blue-500/30 text-blue-300 rounded-lg text-sm hover:bg-blue-500/30 transition-colors flex items-center gap-2"
-                                      >
-                                        <Play className="w-4 h-4" />
-                                        Access Module
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'instructor' && (
-                    <div className="space-y-6">
-                      <div className="flex items-start gap-6">
-                        <img
-                          src={enhancedCourse.instructor.avatar}
-                          alt={enhancedCourse.instructor.name}
-                          className="w-24 h-24 rounded-full object-cover"
-                        />
-                        <div className="flex-1">
-                          <h3 className="text-2xl font-bold text-white mb-2">{enhancedCourse.instructor.name}</h3>
-                          <div className="flex items-center gap-6 text-sm text-gray-400 mb-4">
-                            <div className="flex items-center gap-1">
-                              <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                              <span>{enhancedCourse.instructor.rating} instructor rating</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Users className="w-4 h-4" />
-                              <span>{enhancedCourse.instructor.studentsCount?.toLocaleString()} students</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <BookOpen className="w-4 h-4" />
-                              <span>15 courses</span>
-                            </div>
-                          </div>
-                          <p className="text-gray-300">{enhancedCourse.instructor.bio}</p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'reviews' && (
-                    <div className="space-y-6">
-                      <div className="text-center">
-                        <div className="text-4xl font-bold text-white mb-2">{enhancedCourse.rating}</div>
-                        <div className="flex items-center justify-center gap-1 mb-2">
-                          {[...Array(5)].map((_, i) => (
-                            <Star
-                              key={i}
-                              className={`w-5 h-5 ${
-                                i < Math.floor(enhancedCourse.rating) ? 'text-yellow-400 fill-current' : 'text-gray-600'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                        <p className="text-gray-400">{enhancedCourse.studentsCount?.toLocaleString()} student ratings</p>
-                      </div>
-                      
-                      {/* Mock Reviews */}
-                      <div className="space-y-4">
-                        {[
-                          { name: 'Alex Chen', rating: 5, comment: 'Excellent course! Very comprehensive and well-structured.', date: '2 days ago' },
-                          { name: 'Sarah Miller', rating: 5, comment: 'The instructor explains complex concepts very clearly. Highly recommended!', date: '1 week ago' },
-                          { name: 'Mike Johnson', rating: 4, comment: 'Great content, though some sections could be more detailed.', date: '2 weeks ago' }
-                        ].map((review, index) => (
-                          <div key={index} className="bg-white/5 border border-white/10 rounded-xl p-4">
-                            <div className="flex items-start justify-between mb-2">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
-                                  {review.name[0]}
-                                </div>
-                                <div>
-                                  <h4 className="font-semibold text-white">{review.name}</h4>
-                                  <div className="flex items-center gap-1">
-                                    {[...Array(5)].map((_, i) => (
-                                      <Star
-                                        key={i}
-                                        className={`w-3 h-3 ${
-                                          i < review.rating ? 'text-yellow-400 fill-current' : 'text-gray-600'
-                                        }`}
-                                      />
-                                    ))}
                                   </div>
                                 </div>
                               </div>
-                              <span className="text-xs text-gray-400">{review.date}</span>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'bundles' && bundles.length > 0 && (
+            <div>
+              <h2 className="text-2xl font-bold text-white mb-6">Save with Course Bundles</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {bundles.map((bundle) => (
+                  <div key={bundle.id} className="border border-white/10 rounded-2xl p-6 hover:border-white/20 transition-colors">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="text-xl font-bold text-white">{bundle.name}</h3>
+                          {bundle.isFeatured && (
+                            <SparklesIcon className="w-5 h-5 text-yellow-400" />
+                          )}
+                          {bundle.isPopular && (
+                            <div className="px-2 py-1 bg-red-500/20 text-red-400 text-xs rounded-full">
+                              Popular
                             </div>
-                            <p className="text-gray-300">{review.comment}</p>
+                          )}
+                        </div>
+                        {bundle.description && (
+                          <p className="text-gray-400 text-sm mb-3">{bundle.description}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Bundle Stats */}
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400">{bundle.totalItems} courses included</span>
+                        <span className="text-green-400 font-medium">Save {bundle.savingsPercentage}%</span>
+                      </div>
+
+                      {/* Pricing */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-3xl font-bold text-white">${bundle.finalPrice.toFixed(2)}</span>
+                          <span className="text-gray-400 line-through ml-3">${bundle.totalPrice.toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      {/* Bundle Items Preview */}
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-400 font-medium">Included courses:</p>
+                        {bundle.courseItems.slice(0, 3).map((item) => (
+                          <div key={item.course.id} className="flex items-center gap-2 text-sm">
+                            <CheckCircleIcon className="w-4 h-4 text-green-400" />
+                            <span className="text-gray-300">{item.course.title}</span>
+                            {item.course.id === course.id && (
+                              <span className="text-blue-400">(This Course)</span>
+                            )}
                           </div>
                         ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Sidebar */}
-            <div className="space-y-6">
-              {/* Enrollment Card */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl sticky top-24">
-                {enhancedCourse.imageUrl && (
-                  <div className="relative mb-6 rounded-xl overflow-hidden">
-                    <img
-                      src={enhancedCourse.imageUrl}
-                      alt={enhancedCourse.title}
-                      className="w-full h-40 object-cover"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
-                    <button className="absolute inset-0 flex items-center justify-center group">
-                      <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <Play className="w-8 h-8 text-white" />
-                      </div>
-                    </button>
-                  </div>
-                )}
-
-                <div className="text-center mb-6">
-                  <div className="text-4xl font-bold text-white mb-2">
-                    {enhancedCourse.price === 0 ? 'Free' : `${enhancedCourse.price}`}
-                  </div>
-                  {enhancedCourse.price > 0 && (
-                    <p className="text-gray-400 text-sm">One-time payment • Lifetime access</p>
-                  )}
-                  
-                  {/* NEW: Module pricing comparison */}
-                  {paidModules.length > 0 && totalModulePrice > enhancedCourse.price && (
-                    <div className="mt-2 p-2 bg-green-500/20 border border-green-500/30 rounded-lg">
-                      <p className="text-green-400 text-xs font-medium">
-                        💰 Save ${(totalModulePrice - enhancedCourse.price).toFixed(2)} vs buying modules individually
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {checkingEnrollment ? (
-                  <div className="text-center py-4">
-                    <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto"></div>
-                  </div>
-                ) : isEnrolled ? (
-                  <div className="space-y-3">
-                    <div className="bg-green-500/20 border border-green-500/30 rounded-xl p-4 text-center">
-                      <CheckCircle2 className="w-8 h-8 text-green-400 mx-auto mb-2" />
-                      <p className="text-green-300 font-semibold">You are enrolled!</p>
-                    </div>
-                    <button
-                      onClick={() => router.push(`/courses/${course.id}/modules`)}
-                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
-                    >
-                      <Play className="w-5 h-5" />
-                      Continue Learning
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {/* Use FastEnrollment for free courses, original button for paid courses */}
-                    {enhancedCourse.price === 0 ? (
-                      <FastEnrollment 
-                        course={{
-                          id: course.id,
-                          title: course.title,
-                          price: course.price
-                        }}
-                        onSuccess={handleEnrollmentSuccess}
-                      />
-                    ) : (
-                      <button
-                        onClick={handleEnroll}
-                        disabled={loading}
-                        className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {loading ? (
-                          <>
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            Processing...
-                          </>
-                        ) : (
-                          <>
-                            <Trophy className="w-5 h-5" />
-                            Enroll Now - ${enhancedCourse.price}
-                          </>
+                        {bundle.courseItems.length > 3 && (
+                          <p className="text-sm text-gray-400">+{bundle.courseItems.length - 3} more courses</p>
                         )}
+                      </div>
+
+                      <button
+                        onClick={() => handleBundlePurchase(bundle.id)}
+                        className="w-full py-3 bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white rounded-xl font-semibold transition-all duration-300"
+                      >
+                        Purchase Bundle
                       </button>
-                    )}
-
-                    {/* NEW: Alternative purchase options */}
-                    {paidModules.length > 0 && (
-                      <div className="pt-4 border-t border-white/10">
-                        <p className="text-sm text-gray-400 text-center mb-3">Or purchase modules individually:</p>
-                        <div className="space-y-2">
-                          {/* NEW: Module Shop Button - Main Call to Action */}
-                          <button
-                            onClick={() => router.push(`/courses/${course.id}/modules-shop`)}
-                            className="w-full py-3 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
-                          >
-                            <ShoppingCartIcon className="w-5 h-5" />
-                            🛒 Shop Modules
-                          </button>
-                          <button
-                            onClick={() => router.push(`/courses/${course.id}/modules`)}
-                            className="w-full py-3 bg-blue-500/20 border border-blue-500/30 text-blue-300 rounded-lg hover:bg-blue-500/30 transition-colors text-sm flex items-center justify-center gap-2"
-                          >
-                            <BookOpen className="w-4 h-4" />
-                            Browse All Modules
-                          </button>
-                          <button
-                            onClick={() => router.push('/bundles')}
-                            className="w-full py-3 bg-purple-500/20 border border-purple-500/30 text-purple-300 rounded-lg hover:bg-purple-500/30 transition-colors text-sm flex items-center justify-center gap-2"
-                          >
-                            <Package className="w-4 h-4" />
-                            Create Custom Bundle
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="mt-6 space-y-3 text-center text-sm text-gray-400">
-                  <div className="flex items-center justify-center gap-2">
-                    <Infinity className="w-4 h-4" />
-                    <span>Lifetime access</span>
-                  </div>
-                  <div className="flex items-center justify-center gap-2">
-                    <Monitor className="w-4 h-4" />
-                    <span>Works on desktop & mobile</span>
-                  </div>
-                  <div className="flex items-center justify-center gap-2">
-                    <Award className="w-4 h-4" />
-                    <span>Certificate of completion</span>
-                  </div>
-                  <div className="flex items-center justify-center gap-2">
-                    <Shield className="w-4 h-4" />
-                    <span>30-day money-back guarantee</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Course Stats */}
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                <h3 className="text-lg font-bold text-white mb-4">Course Details</h3>
-                <div className="space-y-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400">Level</span>
-                    <span className="text-white font-semibold">{enhancedCourse.level}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400">Duration</span>
-                    <span className="text-white font-semibold">{enhancedCourse.duration}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400">Modules</span>
-                    <span className="text-white font-semibold">{totalModules}</span>
-                  </div>
-                  {/* NEW: Module breakdown */}
-                  {paidModules.length > 0 && (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-400">Free Modules</span>
-                        <span className="text-green-400 font-semibold">{freeModules.length}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-400">Paid Modules</span>
-                        <span className="text-orange-400 font-semibold">{paidModules.length}</span>
-                      </div>
-                      {!loadingModuleOwnership && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-400">Modules Owned</span>
-                          <span className="text-blue-400 font-semibold">{ownedModules}/{totalModules}</span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400">Language</span>
-                    <span className="text-white font-semibold">{enhancedCourse.language}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-gray-400">Last Updated</span>
-                    <span className="text-white font-semibold">{enhancedCourse.lastUpdated}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* NEW: Module Purchase Summary */}
-              {paidModules.length > 0 && (
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                    <DollarSign className="w-5 h-5 text-green-400" />
-                    Pricing Breakdown
-                  </h3>
-                  <div className="space-y-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400">Complete Course</span>
-                      <span className="text-white font-semibold">
-                        {enhancedCourse.price === 0 ? 'Free' : `${enhancedCourse.price}`}
-                      </span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-400">All Modules Individually</span>
-                      <span className="text-orange-400 font-semibold">${totalModulePrice.toFixed(2)}</span>
-                    </div>
-                    {enhancedCourse.price > 0 && totalModulePrice > enhancedCourse.price && (
-                      <div className="flex items-center justify-between pt-2 border-t border-white/10">
-                        <span className="text-green-400">Course Savings</span>
-                        <span className="text-green-400 font-semibold">${(totalModulePrice - enhancedCourse.price).toFixed(2)}</span>
-                      </div>
-                    )}
                   </div>
-                  
-                  {/* NEW: Quick Action Button */}
-                  <div className="mt-4">
-                    <button
-                      onClick={() => router.push(`/courses/${course.id}/modules-shop`)}
-                      className="w-full py-2 bg-orange-500/20 border border-orange-500/30 text-orange-300 rounded-lg hover:bg-orange-500/30 transition-colors text-sm font-medium"
-                    >
-                      🛒 Start Shopping Modules
-                    </button>
-                  </div>
-                </div>
-              )}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+
+          {activeTab === 'instructor' && (
+            <div>
+              <h2 className="text-2xl font-bold text-white mb-6">Meet Your Instructor</h2>
+              <div className="bg-white/5 rounded-2xl p-6">
+                <div className="flex items-start gap-6">
+                  <div className="w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                    <span className="text-white font-bold text-2xl">
+                      {course.creator.name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-4">
+                      <h3 className="text-2xl font-bold text-white">{course.creator.name}</h3>
+                      {course.creator.isAdmin && (
+                        <span className="px-3 py-1 bg-orange-500/20 text-orange-400 text-sm rounded-full">
+                          Verified Instructor
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-gray-300 leading-relaxed mb-4">
+                      {course.creator.bio || 'An experienced educator passionate about sharing knowledge and helping students achieve their learning goals.'}
+                    </p>
+                    <div className="flex items-center gap-6 text-sm text-gray-400">
+                      <div className="flex items-center gap-2">
+                        <BookOpenIcon className="w-4 h-4" />
+                        <span>Course Creator</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <UserGroupIcon className="w-4 h-4" />
+                        <span>{course.enrollmentCount} students</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -997,13 +863,8 @@ export default function CourseDetail({ course }: CourseDetailProps) {
           0%, 100% { opacity: 0.3; transform: scale(1); }
           50% { opacity: 0.6; transform: scale(1.05); }
         }
-        @keyframes pulse-slower {
-          0%, 100% { opacity: 0.2; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(1.1); }
-        }
         .animate-pulse-slow { animation: pulse-slow 4s ease-in-out infinite; }
-        .animate-pulse-slower { animation: pulse-slower 6s ease-in-out infinite; }
       `}</style>
-    </main>
+    </div>
   );
 }

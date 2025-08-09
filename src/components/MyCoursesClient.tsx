@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import CourseMaterialsWidget from '@/components/student/CourseMaterialsWidget';
 import { 
   BookOpen, 
@@ -14,14 +15,15 @@ import {
   AlertCircle,
   GraduationCap,
   ShoppingCart,
-  Gift
+  Gift,
+  ShoppingBag
 } from 'lucide-react';
 
 type Course = {
   id: number;
   title: string;
   description: string;
-  price: number; // 🆕 NEW: Include price
+  price: number;
   category: {
     name: string;
   };
@@ -35,25 +37,58 @@ type Enrollment = {
   lastAccessed?: string;
   completedModules?: number;
   totalModules?: number;
-  paymentTransactionId?: string; // 🆕 NEW: To distinguish paid vs free
-  enrollmentType?: 'enrolled' | 'purchased'; // 🆕 NEW: Course type
+  paymentTransactionId?: string;
+  enrollmentType?: 'enrolled' | 'purchased';
+};
+
+// 🆕 NEW: Bundle Purchase type
+type BundlePurchase = {
+  id: number;
+  bundleId: number;
+  name: string;
+  description?: string;
+  type: 'MODULE' | 'COURSE';
+  finalPrice: number;
+  itemCount: number;
+  totalItems: number;
+  courseItems?: Array<{
+    course: {
+      id: number;
+      title: string;
+      price: number;
+      imageUrl?: string;
+    };
+  }>;
+  moduleItems?: Array<{
+    module: {
+      id: number;
+      title: string;
+      price: number;
+      course: {
+        id: number;
+        title: string;
+      };
+    };
+  }>;
+  createdAt: string;
 };
 
 export default function MyCoursesClient() {
   const [allCourses, setAllCourses] = useState<Enrollment[]>([]);
+  const [bundlePurchases, setBundlePurchases] = useState<BundlePurchase[]>([]);  // 🆕 NEW
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [activeTab, setActiveTab] = useState<'enrolled' | 'purchased'>('enrolled'); // 🆕 NEW: Tab state
+  const [activeTab, setActiveTab] = useState<'enrolled' | 'purchased' | 'bundles'>('enrolled'); // 🆕 UPDATED
   const router = useRouter();
 
   useEffect(() => {
-    const fetchCourses = async () => {
+    const fetchData = async () => {
       try {
         console.log('🔄 Fetching enrolled courses with progress...');
         
-        // 🆕 NEW: Fetch from updated endpoint that separates course types
+        // Fetch courses
         const res = await fetch('http://localhost:5000/api/enrollments/my-courses', {
           credentials: 'include',
         });
@@ -67,6 +102,26 @@ export default function MyCoursesClient() {
         const data = await res.json();
         console.log('✅ Course data loaded:', data);
         setAllCourses(data);
+
+        // 🆕 NEW: Fetch bundle purchases
+        try {
+          const bundleRes = await fetch('http://localhost:5000/api/bundles?view=purchased', {
+            credentials: 'include'
+          });
+
+          if (bundleRes.ok) {
+            const bundleData = await bundleRes.json();
+            console.log('📦 Bundle purchases loaded:', bundleData);
+            setBundlePurchases(bundleData.bundles || []);
+          } else {
+            console.log('No bundle purchases found or error fetching');
+            setBundlePurchases([]);
+          }
+        } catch (bundleError) {
+          console.log('Bundle fetch error (non-critical):', bundleError);
+          setBundlePurchases([]);
+        }
+
       } catch (err) {
         console.error('❌ Error fetching courses:', err);
         router.push('/login');
@@ -75,10 +130,10 @@ export default function MyCoursesClient() {
       }
     };
 
-    fetchCourses();
+    fetchData();
   }, [router]);
 
-  // 🆕 NEW: Separate courses by type
+  // Separate courses by type
   const enrolledCourses = allCourses.filter(enrollment => 
     enrollment.enrollmentType === 'enrolled' || (!enrollment.paymentTransactionId && enrollment.course.price === 0)
   );
@@ -87,20 +142,46 @@ export default function MyCoursesClient() {
     enrollment.enrollmentType === 'purchased' || (enrollment.paymentTransactionId || enrollment.course.price > 0)
   );
 
-  // Get current courses based on active tab
-  const currentCourses = activeTab === 'enrolled' ? enrolledCourses : purchasedCourses;
+  // Get current content based on active tab
+  const getCurrentContent = () => {
+    switch (activeTab) {
+      case 'enrolled':
+        return enrolledCourses;
+      case 'purchased':
+        return purchasedCourses;
+      case 'bundles':
+        return bundlePurchases;
+      default:
+        return enrolledCourses;
+    }
+  };
 
-  const filteredCourses = currentCourses.filter(enrollment => {
-    const matchesSearch = enrollment.course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         enrollment.course.category?.name.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    if (selectedFilter === 'all') return matchesSearch;
-    if (selectedFilter === 'in-progress') return matchesSearch && (enrollment.progress || 0) > 0 && (enrollment.progress || 0) < 100;
-    if (selectedFilter === 'completed') return matchesSearch && (enrollment.progress || 0) >= 100;
-    if (selectedFilter === 'not-started') return matchesSearch && (enrollment.progress || 0) === 0;
-    
-    return matchesSearch;
-  });
+  const currentCourses = activeTab === 'bundles' ? [] : getCurrentContent() as Enrollment[];
+  const currentBundles = activeTab === 'bundles' ? bundlePurchases : [];
+
+  // Filter content based on current tab
+  const getFilteredContent = () => {
+    if (activeTab === 'bundles') {
+      return bundlePurchases.filter(bundle =>
+        bundle.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        bundle.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    return currentCourses.filter(enrollment => {
+      const matchesSearch = enrollment.course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           enrollment.course.category?.name.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      if (selectedFilter === 'all') return matchesSearch;
+      if (selectedFilter === 'in-progress') return matchesSearch && (enrollment.progress || 0) > 0 && (enrollment.progress || 0) < 100;
+      if (selectedFilter === 'completed') return matchesSearch && (enrollment.progress || 0) >= 100;
+      if (selectedFilter === 'not-started') return matchesSearch && (enrollment.progress || 0) === 0;
+      
+      return matchesSearch;
+    });
+  };
+
+  const filteredContent = getFilteredContent();
 
   const getProgressColor = (progress: number) => {
     if (progress >= 100) return 'from-green-500 to-emerald-500';
@@ -152,7 +233,7 @@ export default function MyCoursesClient() {
     );
   }
 
-  if (allCourses.length === 0) {
+  if (allCourses.length === 0 && bundlePurchases.length === 0) {
     return (
       <main className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] flex items-center justify-center text-white relative overflow-hidden">
         <div className="absolute top-[-100px] right-[-100px] w-[400px] h-[400px] bg-gradient-to-r from-purple-500/20 to-pink-500/20 blur-[150px] rounded-full animate-pulse-slow"></div>
@@ -164,13 +245,22 @@ export default function MyCoursesClient() {
           </div>
           <h2 className="text-3xl font-bold text-white mb-4">Start Your Learning Journey</h2>
           <p className="text-gray-400 mb-8 text-lg">You haven't enrolled in any courses yet. Discover amazing courses and start learning today!</p>
-          <button
-            className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-3 mx-auto"
-            onClick={() => router.push('/categories')}
-          >
-            <Plus className="w-5 h-5" />
-            Browse Courses
-          </button>
+          <div className="space-y-3">
+            <button
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-3 mx-auto"
+              onClick={() => router.push('/categories')}
+            >
+              <Plus className="w-5 h-5" />
+              Browse Courses
+            </button>
+            <button
+              className="bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-3 mx-auto"
+              onClick={() => router.push('/shop/bundles')}
+            >
+              <ShoppingBag className="w-5 h-5" />
+              Browse Bundles
+            </button>
+          </div>
         </div>
       </main>
     );
@@ -186,12 +276,12 @@ export default function MyCoursesClient() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white via-blue-100 to-purple-200 mb-2">
-            My Learning
+            My Learning Dashboard
           </h1>
-          <p className="text-gray-400 text-lg">Track your progress and continue your courses</p>
+          <p className="text-gray-400 text-lg">Track your progress and continue your learning journey</p>
         </div>
 
-        {/* 🆕 NEW: Course Type Tabs */}
+        {/* 🆕 UPDATED: Enhanced Course Type Tabs */}
         <div className="mb-8">
           <div className="flex items-center justify-center gap-4 bg-white/5 border border-white/10 rounded-2xl p-2 backdrop-blur-xl w-fit mx-auto">
             <button
@@ -223,55 +313,119 @@ export default function MyCoursesClient() {
                 {purchasedCourses.length}
               </span>
             </button>
+
+            {/* 🆕 NEW: Bundle Purchases Tab */}
+            <button
+              onClick={() => setActiveTab('bundles')}
+              className={`flex items-center gap-3 px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                activeTab === 'bundles'
+                  ? 'bg-green-500/30 text-green-300 border border-green-400/30'
+                  : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <ShoppingBag className="w-5 h-5" />
+              <span>Bundle Purchases</span>
+              <span className="bg-white/20 text-xs px-2 py-1 rounded-full">
+                {bundlePurchases.length}
+              </span>
+            </button>
           </div>
         </div>
 
-        {/* Stats Overview */}
+        {/* 🆕 UPDATED: Enhanced Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-            <div className="flex items-center gap-4">
-              <div className={`p-3 rounded-xl ${activeTab === 'enrolled' ? 'bg-blue-500/20' : 'bg-purple-500/20'}`}>
-                {activeTab === 'enrolled' ? 
-                  <Gift className="w-6 h-6 text-blue-400" /> : 
-                  <ShoppingCart className="w-6 h-6 text-purple-400" />
-                }
+          {activeTab === 'bundles' ? (
+            // Bundle-specific stats
+            <>
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-green-500/20 rounded-xl">
+                    <ShoppingBag className="w-6 h-6 text-green-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">{bundlePurchases.length}</h3>
+                    <p className="text-gray-400 text-sm">Bundle Purchases</p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <h3 className="text-2xl font-bold text-white">{currentCourses.length}</h3>
-                <p className="text-gray-400 text-sm">
-                  {activeTab === 'enrolled' ? 'Enrolled Courses' : 'Purchased Courses'}
-                </p>
-              </div>
-            </div>
-          </div>
 
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-green-500/20 rounded-xl">
-                <CheckCircle2 className="w-6 h-6 text-green-400" />
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-blue-500/20 rounded-xl">
+                    <BookOpen className="w-6 h-6 text-blue-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">
+                      {bundlePurchases.reduce((sum, bundle) => sum + bundle.totalItems, 0)}
+                    </h3>
+                    <p className="text-gray-400 text-sm">Total Items</p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <h3 className="text-2xl font-bold text-white">
-                  {currentCourses.filter(c => (c.progress || 0) >= 100).length}
-                </h3>
-                <p className="text-gray-400 text-sm">Completed</p>
-              </div>
-            </div>
-          </div>
 
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-orange-500/20 rounded-xl">
-                <Play className="w-6 h-6 text-orange-400" />
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-purple-500/20 rounded-xl">
+                    <GraduationCap className="w-6 h-6 text-purple-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">
+                      ${bundlePurchases.reduce((sum, bundle) => sum + bundle.finalPrice, 0).toFixed(0)}
+                    </h3>
+                    <p className="text-gray-400 text-sm">Total Invested</p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <h3 className="text-2xl font-bold text-white">
-                  {currentCourses.filter(c => (c.progress || 0) > 0 && (c.progress || 0) < 100).length}
-                </h3>
-                <p className="text-gray-400 text-sm">In Progress</p>
+            </>
+          ) : (
+            // Course-specific stats (existing)
+            <>
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                <div className="flex items-center gap-4">
+                  <div className={`p-3 rounded-xl ${activeTab === 'enrolled' ? 'bg-blue-500/20' : 'bg-purple-500/20'}`}>
+                    {activeTab === 'enrolled' ? 
+                      <Gift className="w-6 h-6 text-blue-400" /> : 
+                      <ShoppingCart className="w-6 h-6 text-purple-400" />
+                    }
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">{currentCourses.length}</h3>
+                    <p className="text-gray-400 text-sm">
+                      {activeTab === 'enrolled' ? 'Enrolled Courses' : 'Purchased Courses'}
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-green-500/20 rounded-xl">
+                    <CheckCircle2 className="w-6 h-6 text-green-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">
+                      {currentCourses.filter(c => (c.progress || 0) >= 100).length}
+                    </h3>
+                    <p className="text-gray-400 text-sm">Completed</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-orange-500/20 rounded-xl">
+                    <Play className="w-6 h-6 text-orange-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">
+                      {currentCourses.filter(c => (c.progress || 0) > 0 && (c.progress || 0) < 100).length}
+                    </h3>
+                    <p className="text-gray-400 text-sm">In Progress</p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Controls */}
@@ -283,87 +437,200 @@ export default function MyCoursesClient() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                   type="text"
-                  placeholder={`Search ${activeTab} courses...`}
+                  placeholder={`Search ${activeTab === 'bundles' ? 'bundles' : activeTab + ' courses'}...`}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 />
               </div>
 
-              {/* Filter */}
-              <select
-                value={selectedFilter}
-                onChange={(e) => setSelectedFilter(e.target.value)}
-                className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-              >
-                <option value="all" className="bg-gray-900">All Courses</option>
-                <option value="in-progress" className="bg-gray-900">In Progress</option>
-                <option value="completed" className="bg-gray-900">Completed</option>
-                <option value="not-started" className="bg-gray-900">Not Started</option>
-              </select>
+              {/* Filter - Only show for courses */}
+              {activeTab !== 'bundles' && (
+                <select
+                  value={selectedFilter}
+                  onChange={(e) => setSelectedFilter(e.target.value)}
+                  className="px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                >
+                  <option value="all" className="bg-gray-900">All Courses</option>
+                  <option value="in-progress" className="bg-gray-900">In Progress</option>
+                  <option value="completed" className="bg-gray-900">Completed</option>
+                  <option value="not-started" className="bg-gray-900">Not Started</option>
+                </select>
+              )}
             </div>
 
-            {/* View Toggle */}
-            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-1">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-2 rounded-lg transition-all duration-300 ${
-                  viewMode === 'grid' ? 'bg-blue-500/30 text-blue-400' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <Grid3X3 className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-2 rounded-lg transition-all duration-300 ${
-                  viewMode === 'list' ? 'bg-blue-500/30 text-blue-400' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <List className="w-5 h-5" />
-              </button>
-            </div>
+            {/* View Toggle - Only show for courses */}
+            {activeTab !== 'bundles' && (
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl p-1">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-2 rounded-lg transition-all duration-300 ${
+                    viewMode === 'grid' ? 'bg-blue-500/30 text-blue-400' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <Grid3X3 className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-2 rounded-lg transition-all duration-300 ${
+                    viewMode === 'list' ? 'bg-blue-500/30 text-blue-400' : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <List className="w-5 h-5" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Course Grid/List */}
-        {filteredCourses.length === 0 ? (
+        {/* Content Display */}
+        {filteredContent.length === 0 ? (
           <div className="text-center py-12">
             <div className="w-16 h-16 mx-auto mb-4 bg-white/10 rounded-full flex items-center justify-center">
-              {activeTab === 'enrolled' ? <Gift className="w-8 h-8 text-gray-400" /> : <ShoppingCart className="w-8 h-8 text-gray-400" />}
+              {activeTab === 'bundles' ? (
+                <ShoppingBag className="w-8 h-8 text-gray-400" />
+              ) : activeTab === 'enrolled' ? (
+                <Gift className="w-8 h-8 text-gray-400" />
+              ) : (
+                <ShoppingCart className="w-8 h-8 text-gray-400" />
+              )}
             </div>
             <h3 className="text-xl font-semibold text-gray-300 mb-2">
-              {searchTerm ? 'No courses found' : `No ${activeTab} courses yet`}
+              {searchTerm ? 'No results found' : 
+               activeTab === 'bundles' ? 'No bundle purchases yet' :
+               `No ${activeTab} courses yet`}
             </h3>
             <p className="text-gray-400 mb-6">
               {searchTerm 
-                ? 'Try adjusting your search or filter criteria' 
-                : activeTab === 'enrolled' 
-                  ? 'Start learning with free courses from our catalog'
-                  : 'Purchase premium courses to access advanced content'
+                ? 'Try adjusting your search criteria' 
+                : activeTab === 'bundles'
+                  ? 'Save money by purchasing course bundles with special discounts'
+                  : activeTab === 'enrolled' 
+                    ? 'Start learning with free courses from our catalog'
+                    : 'Purchase premium courses to access advanced content'
               }
             </p>
             {!searchTerm && (
-              <button
-                onClick={() => router.push('/categories')}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-2 mx-auto"
-              >
-                <Plus className="w-4 h-4" />
-                Browse Courses
-              </button>
+              <div className="space-y-3">
+                {activeTab === 'bundles' ? (
+                  <button
+                    onClick={() => router.push('/shop/bundles')}
+                    className="bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-2 mx-auto"
+                  >
+                    <ShoppingBag className="w-4 h-4" />
+                    Browse Bundles
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => router.push('/categories')}
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-2 mx-auto"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Browse Courses
+                  </button>
+                )}
+              </div>
             )}
           </div>
+        ) : activeTab === 'bundles' ? (
+          // 🆕 NEW: Bundle Purchases Display
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {(filteredContent as BundlePurchase[]).map((bundle) => (
+              <div
+                key={bundle.id}
+                className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all duration-300"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        bundle.type === 'COURSE' ? 'bg-green-500/20 text-green-400' : 'bg-purple-500/20 text-purple-400'
+                      }`}>
+                        {bundle.type} Bundle
+                      </span>
+                    </div>
+                    
+                    <h3 className="text-xl font-bold text-white mb-2">{bundle.name}</h3>
+                    {bundle.description && (
+                      <p className="text-gray-400 text-sm mb-3">{bundle.description}</p>
+                    )}
+                    <div className="text-gray-400 text-sm mb-3">
+                      {bundle.totalItems} items included
+                    </div>
+                  </div>
+                  
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-green-400">${bundle.finalPrice.toFixed(2)}</div>
+                    <div className="text-sm text-gray-400">
+                      {new Date(bundle.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <Link
+                    href={`/bundles/${bundle.bundleId}`}
+                    className="block w-full py-2 text-center bg-white/10 hover:bg-white/20 text-white rounded-xl font-medium transition-colors"
+                  >
+                    View Bundle Details
+                  </Link>
+                  
+                  {bundle.type === 'COURSE' && bundle.courseItems && bundle.courseItems.length > 0 && (
+                    <div className="text-sm">
+                      <p className="text-gray-400 mb-2">Included Courses:</p>
+                      <div className="space-y-1">
+                        {bundle.courseItems.slice(0, 3).map((item) => (
+                          <Link
+                            key={item.course.id}
+                            href={`/courses/${item.course.id}`}
+                            className="block text-blue-400 hover:text-blue-300 transition-colors"
+                          >
+                            • {item.course.title}
+                          </Link>
+                        ))}
+                        {bundle.courseItems.length > 3 && (
+                          <p className="text-gray-400">+{bundle.courseItems.length - 3} more courses</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {bundle.type === 'MODULE' && bundle.moduleItems && bundle.moduleItems.length > 0 && (
+                    <div className="text-sm">
+                      <p className="text-gray-400 mb-2">Included Modules:</p>
+                      <div className="space-y-1">
+                        {bundle.moduleItems.slice(0, 3).map((item) => (
+                          <Link
+                            key={item.module.id}
+                            href={`/courses/${item.module.course.id}/modules/${item.module.id}`}
+                            className="block text-purple-400 hover:text-purple-300 transition-colors"
+                          >
+                            • {item.module.title} ({item.module.course.title})
+                          </Link>
+                        ))}
+                        {bundle.moduleItems.length > 3 && (
+                          <p className="text-gray-400">+{bundle.moduleItems.length - 3} more modules</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
+          // Existing Course Grid/List Display
           <div className={`grid gap-6 ${
             viewMode === 'grid' 
               ? 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3' 
               : 'grid-cols-1'
           }`}>
-            {filteredCourses.map((enrollment) => {
+            {(filteredContent as Enrollment[]).map((enrollment) => {
               const progress = enrollment.progress || 0;
               const isPaid = enrollment.course.price > 0 || enrollment.paymentTransactionId;
               
               return viewMode === 'grid' ? (
-                // Grid View
+                // Grid View (existing code with minor updates)
                 <div
                   key={enrollment.id}
                   className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all duration-300 cursor-pointer group"
@@ -379,7 +646,6 @@ export default function MyCoursesClient() {
                       }`}>
                         {getStatusText(progress)}
                       </span>
-                      {/* 🆕 NEW: Course type indicator */}
                       <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                         isPaid ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'
                       }`}>
@@ -422,7 +688,6 @@ export default function MyCoursesClient() {
                       </div>
                     )}
 
-                    {/* Course Materials Count */}
                     <div className="flex items-center justify-between text-xs text-gray-400 mt-1">
                       <CourseMaterialsWidget courseId={enrollment.course.id} />
                       <span>Last: {formatLastAccessed(enrollment.lastAccessed)}</span>
@@ -430,7 +695,7 @@ export default function MyCoursesClient() {
                   </div>
                 </div>
               ) : (
-                // List View - Similar structure with horizontal layout
+                // List View (existing code)
                 <div
                   key={enrollment.id}
                   className="bg-white/5 border border-white/10 rounded-xl p-6 backdrop-blur-xl hover:bg-white/10 transition-all duration-300 cursor-pointer group"
@@ -488,7 +753,6 @@ export default function MyCoursesClient() {
                             <span>Enrolled: {formatEnrollmentDate(enrollment.enrolledAt)}</span>
                           </div>
 
-                          {/* Course Materials Count */}
                           <div className="mt-1">
                             <CourseMaterialsWidget courseId={enrollment.course.id} />
                           </div>
@@ -503,18 +767,29 @@ export default function MyCoursesClient() {
           </div>
         )}
 
-        {/* Browse More Courses */}
+        {/* Browse More Section */}
         <div className="mt-12 text-center">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl">
             <h3 className="text-2xl font-bold text-white mb-4">Ready for More?</h3>
-            <p className="text-gray-400 mb-6">Explore our course catalog and continue expanding your skills</p>
-            <button
-              onClick={() => router.push('/categories')}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-3 mx-auto"
-            >
-              <Plus className="w-5 h-5" />
-              Browse More Courses
-            </button>
+            <p className="text-gray-400 mb-6">
+              Explore our catalog and continue expanding your skills
+            </p>
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={() => router.push('/categories')}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-3"
+              >
+                <Plus className="w-5 h-5" />
+                Browse Courses
+              </button>
+              <button
+                onClick={() => router.push('/shop/bundles')}
+                className="bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700 text-white px-8 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center gap-3"
+              >
+                <ShoppingBag className="w-5 h-5" />
+                Browse Bundles
+              </button>
+            </div>
           </div>
         </div>
       </div>
