@@ -1,4 +1,3 @@
-// frontend/src/components/admin/NoteModal.tsx
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
@@ -17,10 +16,14 @@ interface Note {
   orderIndex: number;
   courseId: number;
   moduleId?: number;
+  chapterId?: number; // Added chapter support
   course: {
     title: string;
   };
   module?: {
+    title: string;
+  };
+  chapter?: { // Added chapter support
     title: string;
   };
 }
@@ -34,6 +37,12 @@ interface Module {
   id: number;
   title: string;
   courseId: number;
+}
+
+interface Chapter {
+  id: number;
+  title: string;
+  moduleId: number;
 }
 
 interface NoteModalProps {
@@ -50,10 +59,12 @@ export default function NoteModal({ note, courses, onClose, onSuccess }: NoteMod
     content: '',
     courseId: '',
     moduleId: '',
+    chapterId: '', // Added chapter support
     orderIndex: '0',
     isPublished: false
   });
   const [modules, setModules] = useState<Module[]>([]);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +78,7 @@ export default function NoteModal({ note, courses, onClose, onSuccess }: NoteMod
         content: note.content || '',
         courseId: note.courseId.toString(),
         moduleId: note.moduleId?.toString() || '',
+        chapterId: note.chapterId?.toString() || '', // Added chapter support
         orderIndex: note.orderIndex.toString(),
         isPublished: note.isPublished
       });
@@ -75,41 +87,155 @@ export default function NoteModal({ note, courses, onClose, onSuccess }: NoteMod
       if (note.courseId) {
         loadModules(note.courseId);
       }
+      
+      // Load chapters for the note's module
+      if (note.moduleId) {
+        loadChapters(note.moduleId);
+      }
     }
   }, [note]);
 
   useEffect(() => {
+    console.log('🔍 Frontend: useEffect triggered for courseId:', formData.courseId);
     if (formData.courseId) {
+      console.log('🔍 Frontend: About to load modules for courseId:', formData.courseId);
       loadModules(parseInt(formData.courseId));
     } else {
+      console.log('🔍 Frontend: Clearing modules and chapters (no courseId)');
       setModules([]);
-      setFormData(prev => ({ ...prev, moduleId: '' }));
+      setChapters([]);
+      setFormData(prev => ({ ...prev, moduleId: '', chapterId: '' }));
     }
   }, [formData.courseId]);
 
+  useEffect(() => {
+    console.log('🔍 Frontend: useEffect triggered for moduleId:', formData.moduleId);
+    if (formData.moduleId) {
+      console.log('🔍 Frontend: About to load chapters for moduleId:', formData.moduleId);
+      loadChapters(parseInt(formData.moduleId));
+    } else {
+      console.log('🔍 Frontend: Clearing chapters (no moduleId)');
+      setChapters([]);
+      setFormData(prev => ({ ...prev, chapterId: '' }));
+    }
+  }, [formData.moduleId]);
+
+  // Add this new useEffect to monitor chapters state changes
+  useEffect(() => {
+    console.log('📊 Frontend: Chapters state updated:', {
+      count: chapters.length,
+      chapters: chapters.map(ch => ({ id: ch.id, title: ch.title }))
+    });
+  }, [chapters]);
+
+  // Add this new useEffect to monitor form data changes
+  useEffect(() => {
+    console.log('📋 Frontend: Form data updated:', formData);
+  }, [formData]);
+
+  // Add this new useEffect to monitor modules state changes
+  useEffect(() => {
+    console.log('📦 Frontend: Modules state updated:', {
+      count: modules.length,
+      modules: modules.map(m => ({ id: m.id, title: m.title }))
+    });
+  }, [modules]);
+
   const loadModules = async (courseId: number) => {
+    console.log('🔍 Frontend: Loading modules for course:', courseId);
+    
     try {
       const response = await fetch(`http://localhost:5000/api/courses/${courseId}`, {
         credentials: 'include'
       });
       
+      console.log('🔍 Frontend: Modules API response status:', response.status);
+      console.log('🔍 Frontend: Modules API response ok:', response.ok);
+      
       if (response.ok) {
         const courseData = await response.json();
-        setModules(courseData.modules || []);
+        console.log('🔍 Frontend: Course data received:', courseData);
+        
+        // Fix: The modules are nested under courseData.course.modules
+        const modules = courseData.course?.modules || courseData.modules || [];
+        
+        console.log('🔍 Frontend: Modules found:', modules.length);
+        console.log('🔍 Frontend: Modules data:', modules);
+        
+        setModules(modules);
+        console.log('✅ Frontend: Modules set in state:', modules.length);
+      } else {
+        console.error('❌ Frontend: Modules API response not ok:', response.status);
+        const errorText = await response.text();
+        console.error('❌ Frontend: Modules error response:', errorText);
+        setModules([]);
       }
     } catch (error) {
-      console.error('Error loading modules:', error);
+      console.error('❌ Frontend: Error loading modules:', error);
+      setModules([]);
+    }
+  };
+
+  const loadChapters = async (moduleId: number) => {
+    console.log('🔍 Frontend: Loading chapters for module:', moduleId);
+    
+    // Clear existing chapters first
+    setChapters([]);
+    
+    try {
+      const response = await fetch(`http://localhost:5000/api/admin/modules/${moduleId}`, {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      console.log('🔍 Frontend: Response status:', response.status);
+      console.log('🔍 Frontend: Response ok:', response.ok);
+      
+      if (response.ok) {
+        const moduleData = await response.json();
+        console.log('🔍 Frontend: Module data received:', moduleData);
+        console.log('🔍 Frontend: Chapters found:', moduleData.chapters?.length || 0);
+        console.log('🔍 Frontend: Chapters data:', moduleData.chapters);
+        
+        // Ensure chapters is an array
+        const chapters = Array.isArray(moduleData.chapters) ? moduleData.chapters : [];
+        console.log('🔍 Frontend: Setting chapters array:', chapters);
+        
+        setChapters(chapters);
+        console.log('✅ Frontend: setChapters called with:', chapters.length, 'chapters');
+      } else {
+        console.error('❌ Frontend: API response not ok:', response.status, response.statusText);
+        const errorText = await response.text();
+        console.error('❌ Frontend: Error response body:', errorText);
+      }
+    } catch (error) {
+      console.error('❌ Frontend: Catch block - Error loading chapters:', error);
+      setChapters([]);
     }
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     
+    console.log('🔄 Frontend: Input change detected:', { name, value, type });
+    
     if (type === 'checkbox') {
       const checked = (e.target as HTMLInputElement).checked;
-      setFormData(prev => ({ ...prev, [name]: checked }));
+      console.log('🔄 Frontend: Checkbox change:', { name, checked });
+      setFormData(prev => {
+        const newData = { ...prev, [name]: checked };
+        console.log('🔄 Frontend: New form data after checkbox change:', newData);
+        return newData;
+      });
     } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
+      console.log('🔄 Frontend: Regular input change:', { name, value });
+      setFormData(prev => {
+        const newData = { ...prev, [name]: value };
+        console.log('🔄 Frontend: New form data after input change:', newData);
+        return newData;
+      });
     }
   };
 
@@ -171,6 +297,10 @@ export default function NoteModal({ note, courses, onClose, onSuccess }: NoteMod
         submitData.append('moduleId', formData.moduleId);
       }
       
+      if (formData.chapterId) { // Added chapter support
+        submitData.append('chapterId', formData.chapterId);
+      }
+      
       if (selectedFile) {
         submitData.append('noteFile', selectedFile);
       }
@@ -211,6 +341,24 @@ export default function NoteModal({ note, courses, onClose, onSuccess }: NoteMod
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
+  const getLocationText = () => {
+    if (!formData.courseId) return 'Select where to add this note';
+    
+    const courseName = courses.find(c => c.id === parseInt(formData.courseId))?.title || 'Course';
+    const moduleName = modules.find(m => m.id === parseInt(formData.moduleId))?.title;
+    const chapterName = chapters.find(c => c.id === parseInt(formData.chapterId))?.title;
+    
+    let location = `📚 ${courseName}`;
+    if (moduleName) {
+      location += ` > 📁 ${moduleName}`;
+      if (chapterName) {
+        location += ` > 📄 ${chapterName}`;
+      }
+    }
+    
+    return location;
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
       <div className="bg-gray-900 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-700">
@@ -231,6 +379,19 @@ export default function NoteModal({ note, courses, onClose, onSuccess }: NoteMod
             {error}
           </div>
         )}
+
+        {/* Location Display */}
+        <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+          <p className="text-blue-400 font-medium text-sm mb-1">Note Location:</p>
+          <p className="text-white">{getLocationText()}</p>
+          {formData.courseId && (
+            <p className="text-gray-400 text-xs mt-1">
+              {!formData.moduleId && !formData.chapterId ? 'This note will be added to the course level' :
+               !formData.chapterId ? 'This note will be added to the module level' :
+               'This note will be added to the chapter level'}
+            </p>
+          )}
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Title */}
@@ -267,7 +428,7 @@ export default function NoteModal({ note, courses, onClose, onSuccess }: NoteMod
           {/* Course Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Course *
+              Course * <span className="text-xs text-gray-500">(Required)</span>
             </label>
             <select
               name="courseId"
@@ -295,8 +456,12 @@ export default function NoteModal({ note, courses, onClose, onSuccess }: NoteMod
           {/* Module Selection */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Module (Optional)
+              Module <span className="text-xs text-gray-500">(Optional - Note can be added to course level)</span>
             </label>
+            {/* Debug info for modules */}
+            <div className="text-xs text-gray-500 mb-1">
+              Debug: Modules available: {modules.length} | CourseId: {formData.courseId} | Selected ModuleId: {formData.moduleId}
+            </div>
             <select
               name="moduleId"
               value={formData.moduleId}
@@ -308,16 +473,65 @@ export default function NoteModal({ note, courses, onClose, onSuccess }: NoteMod
               <option value="" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
                 Select Module (Optional)
               </option>
-              {modules.map(module => (
-                <option 
-                  key={module.id} 
-                  value={module.id}
-                  style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
-                >
-                  {module.title}
-                </option>
-              ))}
+              {modules.map(module => {
+                console.log('🔍 Rendering module option:', module);
+                return (
+                  <option 
+                    key={module.id} 
+                    value={module.id}
+                    style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
+                  >
+                    {module.title}
+                  </option>
+                );
+              })}
             </select>
+          </div>
+
+          {/* Chapter Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Chapter <span className="text-xs text-gray-500">(Optional - Note can be added to module level)</span>
+            </label>
+            {/* Debug info */}
+            <div className="text-xs text-gray-500 mb-1">
+              Debug: Chapters in state: {chapters.length} | ModuleId: {formData.moduleId} | ChapterId: {formData.chapterId}
+            </div>
+            <select
+              name="chapterId"
+              value={formData.chapterId}
+              onChange={handleInputChange}
+              disabled={!formData.moduleId}
+              className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
+            >
+              <option value="" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
+                Select Chapter (Optional)
+              </option>
+              {chapters.length > 0 ? chapters.map((chapter, index) => {
+                console.log('🔍 Rendering chapter option #', index, ':', chapter);
+                return (
+                  <option 
+                    key={chapter.id} 
+                    value={chapter.id}
+                    style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
+                  >
+                    {chapter.title}
+                  </option>
+                );
+              }) : (
+                <option disabled style={{ backgroundColor: '#1f2937', color: '#666' }}>
+                  No chapters available
+                </option>
+              )}
+            </select>
+            
+            {/* More debug info */}
+            {chapters.length > 0 && (
+              <div className="text-xs text-gray-500 mt-1">
+                Available chapters: {chapters.map(ch => ch.title).join(', ')}
+              </div>
+            )}
           </div>
 
           {/* Content (Text) */}
