@@ -1,32 +1,31 @@
-// frontend/src/components/admin/CourseModal.tsx
+
 "use client";
 
 import { useState, useEffect } from 'react';
-import { XMarkIcon, AcademicCapIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 
-interface Course {
+interface Chapter {
   id: number;
   title: string;
-  slug: string;
-  description: string;
-  price: number;
-  imageUrl: string;
-  isDeleted: boolean;
+  description?: string;
+  moduleId: number; // Changed from courseId to moduleId
+  order: number;
+  status: 'PUBLISHED' | 'DRAFT';
   createdAt: string;
-  category: {
+}
+
+interface Module {
+  id: number;
+  title: string;
+  course?: {
     id: number;
-    name: string;
+    title: string;
   };
 }
 
-interface Category {
-  id: number;
-  name: string;
-}
-
-interface CourseModalProps {
-  course: Course | null; // null for create, course object for edit
-  categories: Category[];
+interface ChapterModalProps {
+  chapter: Chapter | null;
+  modules?: Module[]; // Changed from courses to modules
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -34,78 +33,61 @@ interface CourseModalProps {
 interface FormData {
   title: string;
   description: string;
-  price: number;
-  categoryId: number | '';
-  imageUrl: string;
+  moduleId: number | ''; // Changed from courseId to moduleId
+  order: number | '';
+  status: 'PUBLISHED' | 'DRAFT';
 }
 
-export default function CourseModal({ course, categories, onClose, onSuccess }: CourseModalProps) {
+export default function ChapterModal({ chapter, modules = [], onClose, onSuccess }: ChapterModalProps) {
   const [formData, setFormData] = useState<FormData>({
     title: '',
     description: '',
-    price: 0,
-    categoryId: '',
-    imageUrl: ''
+    moduleId: '',
+    order: '',
+    status: 'DRAFT',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isEditing = Boolean(course);
+  const isEditing = Boolean(chapter);
 
   useEffect(() => {
-    if (course) {
+    if (chapter) {
       setFormData({
-        title: course.title,
-        description: course.description,
-        price: course.price,
-        categoryId: course.category.id,
-        imageUrl: course.imageUrl
+        title: chapter.title,
+        description: chapter.description || '',
+        moduleId: chapter.moduleId,
+        order: chapter.order,
+        status: chapter.status,
       });
     } else {
       setFormData({
         title: '',
         description: '',
-        price: 0,
-        categoryId: categories.length > 0 ? categories[0].id : '',
-        imageUrl: ''
+        moduleId: '',
+        order: '',
+        status: 'DRAFT',
       });
     }
-  }, [course, categories]);
-
-  const generateSlug = (title: string) => {
-    return title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-  };
+  }, [chapter]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    console.log('🔍 CourseModal: Submitting form data:', formData);
-
     try {
-      if (!formData.categoryId) {
-        throw new Error('Please select a category');
-      }
-
-      const slug = generateSlug(formData.title);
-      const requestData = {
+      const submitData = {
         ...formData,
-        slug,
-        categoryId: parseInt(formData.categoryId.toString()),
-        price: parseFloat(formData.price.toString())
+        moduleId: Number(formData.moduleId), // Changed from courseId to moduleId
+        order: Number(formData.order),
       };
 
-      const url = isEditing 
-        ? `http://localhost:5000/api/admin/courses/${course!.id}`
-        : 'http://localhost:5000/api/admin/courses';
-      
-      const method = isEditing ? 'PUT' : 'POST';
+      const url = isEditing
+        ? `http://localhost:5000/api/admin/chapters/${chapter!.id}`
+        : `http://localhost:5000/api/admin/chapters`;
 
-      console.log(`🔍 CourseModal: Making ${method} request to:`, url);
+      const method = isEditing ? 'PUT' : 'POST';
 
       const response = await fetch(url, {
         method,
@@ -113,13 +95,7 @@ export default function CourseModal({ course, categories, onClose, onSuccess }: 
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestData)
-      });
-
-      console.log('🔍 CourseModal: Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
+        body: JSON.stringify(submitData),
       });
 
       if (!response.ok) {
@@ -127,15 +103,10 @@ export default function CourseModal({ course, categories, onClose, onSuccess }: 
         throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const result = await response.json();
-      console.log('✅ CourseModal: Course saved successfully:', result);
-
       onSuccess();
-      
     } catch (err: unknown) {
-      console.error('❌ CourseModal: Error saving course:', err);
-      
-      const errorMessage = err instanceof Error ? err.message : 'Failed to save course';
+      console.error('Error saving chapter:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to save chapter';
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -144,23 +115,10 @@ export default function CourseModal({ course, categories, onClose, onSuccess }: 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    
-    if (name === 'price') {
-      setFormData(prev => ({
-        ...prev,
-        [name]: parseFloat(value) || 0
-      }));
-    } else if (name === 'categoryId') {
-      setFormData(prev => ({
-        ...prev,
-        [name]: parseInt(value) || ''
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [name]: value
-      }));
-    }
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -170,15 +128,15 @@ export default function CourseModal({ course, categories, onClose, onSuccess }: 
   };
 
   return (
-    <div 
+    <div
       className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
       onClick={handleOverlayClick}
     >
-      <div className="bg-gray-800 backdrop-blur-lg border border-white/20 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-gray-800 backdrop-blur-lg border border-white/20 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <h2 className="text-xl font-bold text-white">
-            {isEditing ? 'Edit Course' : 'Create New Course'}
+            {isEditing ? 'Edit Chapter' : 'Create New Chapter'}
           </h2>
           <button
             onClick={onClose}
@@ -197,10 +155,10 @@ export default function CourseModal({ course, categories, onClose, onSuccess }: 
             </div>
           )}
 
-          {/* Course Title */}
+          {/* Chapter Title */}
           <div>
             <label htmlFor="title" className="block text-sm font-medium text-gray-300 mb-2">
-              Course Title *
+              Chapter Title *
             </label>
             <input
               type="text"
@@ -208,113 +166,99 @@ export default function CourseModal({ course, categories, onClose, onSuccess }: 
               name="title"
               required
               className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter course title"
+              placeholder="Enter chapter title"
               value={formData.title}
               onChange={handleInputChange}
             />
-            {formData.title && (
-              <p className="text-xs text-gray-400 mt-1">
-                Slug: /{generateSlug(formData.title)}
-              </p>
-            )}
           </div>
 
           {/* Description */}
           <div>
             <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-2">
-              Description *
+              Description
             </label>
             <textarea
               id="description"
               name="description"
-              required
-              rows={4}
+              rows={3}
               className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder="Describe this course"
+              placeholder="Enter chapter description (optional)"
               value={formData.description}
               onChange={handleInputChange}
             />
           </div>
 
-          {/* Category Selection */}
+          {/* Module Selection */}
           <div>
-            <label htmlFor="categoryId" className="block text-sm font-medium text-gray-300 mb-2">
-              Category *
+            <label htmlFor="moduleId" className="block text-sm font-medium text-gray-300 mb-2">
+              Module *
             </label>
             <select
-              id="categoryId"
-              name="categoryId"
+              id="moduleId"
+              name="moduleId"
               required
               className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.categoryId}
+              value={formData.moduleId}
               onChange={handleInputChange}
             >
-              <option value="">Select a category</option>
-              {categories.map(category => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
+              <option value="" className="bg-gray-900">Select a module</option>
+              {Array.isArray(modules) && modules.length > 0 ? (
+                modules.map((module) => (
+                  <option key={module.id} value={module.id} className="bg-gray-900">
+                    {module.title} {module.course ? `(${module.course.title})` : ''}
+                  </option>
+                ))
+              ) : (
+                <option value="" disabled className="bg-gray-900">
+                  No modules available
                 </option>
-              ))}
+              )}
             </select>
+            {(!Array.isArray(modules) || modules.length === 0) && (
+              <p className="text-xs text-yellow-400 mt-1">
+                No modules available. Create a module first.
+              </p>
+            )}
           </div>
 
-          {/* Price */}
+          {/* Order */}
           <div>
-            <label htmlFor="price" className="block text-sm font-medium text-gray-300 mb-2">
-              Price (USD) *
+            <label htmlFor="order" className="block text-sm font-medium text-gray-300 mb-2">
+              Order *
             </label>
             <input
               type="number"
-              id="price"
-              name="price"
+              id="order"
+              name="order"
               required
-              min="0"
-              step="0.01"
+              min="1"
               className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="0.00"
-              value={formData.price}
+              placeholder="Chapter order (1, 2, 3...)"
+              value={formData.order}
               onChange={handleInputChange}
             />
             <p className="text-xs text-gray-400 mt-1">
-              Set to 0 for free courses
+              Chapter order within the module
             </p>
           </div>
 
-          {/* Image URL */}
+          {/* Status */}
           <div>
-            <label htmlFor="imageUrl" className="block text-sm font-medium text-gray-300 mb-2">
-              Course Image URL
+            <label htmlFor="status" className="block text-sm font-medium text-gray-300 mb-2">
+              Status *
             </label>
-            <input
-              type="url"
-              id="imageUrl"
-              name="imageUrl"
-              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="https://example.com/course-image.jpg"
-              value={formData.imageUrl}
+            <select
+              id="status"
+              name="status"
+              required
+              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={formData.status}
               onChange={handleInputChange}
-            />
+            >
+              <option value="DRAFT" className="bg-gray-900">Draft - Hidden from students</option>
+              <option value="PUBLISHED" className="bg-gray-900">Published - Visible to students</option>
+            </select>
           </div>
-
-          {/* Image Preview */}
-          {formData.imageUrl && (
-            <div className="mt-4">
-              <p className="text-sm font-medium text-gray-300 mb-2">Preview:</p>
-              <div className="relative h-32 w-full bg-white/10 rounded-lg overflow-hidden">
-                <img
-                  src={formData.imageUrl}
-                  alt="Preview"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none';
-                  }}
-                />
-                <div className="absolute inset-0 flex items-center justify-center bg-white/10">
-                  <AcademicCapIcon className="h-8 w-8 text-gray-400" />
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Form Actions */}
           <div className="flex items-center justify-end space-x-3 pt-4">
@@ -327,7 +271,7 @@ export default function CourseModal({ course, categories, onClose, onSuccess }: 
             </button>
             <button
               type="submit"
-              disabled={loading || !formData.title || !formData.description || !formData.categoryId}
+              disabled={loading || !formData.title || !formData.moduleId || !formData.order}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? (
@@ -336,7 +280,7 @@ export default function CourseModal({ course, categories, onClose, onSuccess }: 
                   {isEditing ? 'Updating...' : 'Creating...'}
                 </>
               ) : (
-                isEditing ? 'Update Course' : 'Create Course'
+                isEditing ? 'Update Chapter' : 'Create Chapter'
               )}
             </button>
           </div>
