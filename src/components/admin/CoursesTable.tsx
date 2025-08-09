@@ -1,18 +1,5 @@
-// frontend/src/components/admin/CoursesTable.tsx
-"use client";
-
-import { useState } from 'react';
-import { 
-  PencilIcon, 
-  TrashIcon, 
-  AcademicCapIcon,
-  PhotoIcon,
-  CalendarIcon,
-  UserGroupIcon,
-  CurrencyDollarIcon,
-  RectangleStackIcon,
-  TagIcon
-} from '@heroicons/react/24/outline';
+// components/admin/CoursesTable.tsx - Removed MODULES and ENROLLMENTS columns
+import { PencilIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface Course {
   id: number;
@@ -22,6 +9,8 @@ interface Course {
   price: number;
   imageUrl: string;
   isDeleted: boolean;
+  publishStatus?: string;
+  isPaid?: boolean;
   createdAt: string;
   category: {
     id: number;
@@ -36,8 +25,8 @@ interface Course {
 interface CoursesTableProps {
   courses: Course[];
   onEditCourse: (course: Course) => void;
-  onDeleteCourse: (courseId: number) => Promise<void>;
-  onRefresh: () => Promise<void>;
+  onDeleteCourse: (courseId: number) => void;
+  onRefresh: () => void;
 }
 
 export default function CoursesTable({ 
@@ -46,221 +35,118 @@ export default function CoursesTable({
   onDeleteCourse, 
   onRefresh 
 }: CoursesTableProps) {
-  const [deletingCourses, setDeletingCourses] = useState<Set<number>>(new Set());
-
   const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      const now = new Date();
-      const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-      
-      if (diffInSeconds < 60) return 'just now';
-      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} minutes ago`;
-      if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
-      if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)} days ago`;
-      
-      return date.toLocaleDateString();
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    } catch (error) {
-      return 'Unknown';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const formatPrice = (course: Course) => {
+    if (course.price === 0) {
+      return <span className="text-green-400 font-medium">Free</span>;
     }
+    return <span className="text-white font-medium">${course.price.toFixed(2)}</span>;
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const handleDeleteCourse = async (courseId: number) => {
-    setDeletingCourses(prev => new Set(prev).add(courseId));
+  const getStatusBadge = (course: Course) => {
+    const isPublished = course.publishStatus === 'PUBLISHED' || course.publishStatus === undefined;
     
-    try {
-      await onDeleteCourse(courseId);
-    } finally {
-      setDeletingCourses(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(courseId);
-        return newSet;
-      });
+    if (isPublished) {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-500/20 text-green-400">
+          Published
+        </span>
+      );
     }
-  };
-
-  if (courses.length === 0) {
     return (
-      <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-12 text-center">
-        <AcademicCapIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-        <h3 className="text-lg font-medium text-white mb-2">No courses found</h3>
-        <p className="text-gray-400 mb-4">Start by creating your first course to build your platform.</p>
-        <button
-          onClick={onRefresh}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Refresh
-        </button>
-      </div>
+      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
+        Draft
+      </span>
     );
-  }
+  };
 
   return (
     <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl overflow-hidden">
-      {/* Table Header */}
-      <div className="px-6 py-4 border-b border-white/10">
-        <h3 className="text-lg font-semibold text-white">Courses ({courses.length})</h3>
-      </div>
-
-      {/* Table Content */}
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-white/5">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Course
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Category
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Price
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Modules
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Enrollments
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Created
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">
-                Actions
-              </th>
+          <thead>
+            <tr className="border-b border-white/10">
+              <th className="text-left py-4 px-6 text-sm font-medium text-gray-300">COURSE</th>
+              <th className="text-left py-4 px-6 text-sm font-medium text-gray-300">CATEGORY</th>
+              <th className="text-left py-4 px-6 text-sm font-medium text-gray-300">PRICE</th>
+              <th className="text-left py-4 px-6 text-sm font-medium text-gray-300">STATUS</th>
+              <th className="text-left py-4 px-6 text-sm font-medium text-gray-300">CREATED</th>
+              <th className="text-right py-4 px-6 text-sm font-medium text-gray-300">ACTIONS</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/10">
             {courses.map((course) => (
-              <tr 
-                key={course.id} 
-                className="hover:bg-white/5 transition-colors duration-200"
-              >
-                {/* Course Info */}
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 h-12 w-12">
-                      {course.imageUrl ? (
-                        <div className="relative h-12 w-12 rounded-lg overflow-hidden">
-                          <img
-                            src={course.imageUrl}
-                            alt={course.title}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement;
-                              target.style.display = 'none';
-                              const fallback = target.nextElementSibling as HTMLElement;
-                              if (fallback) fallback.style.display = 'flex';
-                            }}
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg hidden items-center justify-center">
-                            <PhotoIcon className="h-6 w-6 text-white" />
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="h-12 w-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                          <AcademicCapIcon className="h-6 w-6 text-white" />
-                        </div>
+              <tr key={course.id} className="hover:bg-white/5 transition-colors">
+                <td className="py-4 px-6">
+                  <div className="flex items-center gap-3">
+                    {/* Course Image */}
+                    {course.imageUrl ? (
+                      <img
+                        src={course.imageUrl}
+                        alt={course.title}
+                        className="w-12 h-12 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <h3 className="text-white font-semibold">{course.title}</h3>
+                      {course.description && (
+                        <p className="text-gray-400 text-sm mt-1 line-clamp-1 max-w-xs">
+                          {course.description}
+                        </p>
                       )}
                     </div>
-                    <div className="ml-4">
-                      <div className="text-sm font-medium text-white">
-                        {course.title}
-                      </div>
-                      <div className="text-sm text-gray-400 max-w-xs truncate">
-                        {course.description}
-                      </div>
-                    </div>
                   </div>
                 </td>
-
-                {/* Category */}
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <TagIcon className="h-4 w-4 text-gray-400 mr-2" />
-                    <span className="text-sm text-gray-300">
-                      {course.category.name}
+                <td className="py-4 px-6">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400">
+                    {course.category.name}
+                  </span>
+                </td>
+                <td className="py-4 px-6">
+                  {formatPrice(course)}
+                </td>
+                <td className="py-4 px-6">
+                  {getStatusBadge(course)}
+                </td>
+                <td className="py-4 px-6">
+                  <div className="flex items-center gap-2 text-gray-400">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm">
+                      {formatDate(course.createdAt)}
                     </span>
                   </div>
                 </td>
-
-                {/* Price */}
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <CurrencyDollarIcon className="h-4 w-4 text-gray-400 mr-2" />
-                    <span className={`text-sm font-medium ${
-                      course.price === 0 ? 'text-green-400' : 'text-yellow-400'
-                    }`}>
-                      {course.price === 0 ? 'Free' : formatCurrency(course.price)}
-                    </span>
-                  </div>
-                </td>
-
-                {/* Modules Count */}
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <RectangleStackIcon className="h-4 w-4 text-gray-400 mr-2" />
-                    <span className="text-sm text-gray-300">
-                      {course._count?.modules || 0} modules
-                    </span>
-                  </div>
-                </td>
-
-                {/* Enrollments Count */}
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <UserGroupIcon className="h-4 w-4 text-gray-400 mr-2" />
-                    <span className="text-sm text-gray-300">
-                      {course._count?.enrollments || 0} students
-                    </span>
-                  </div>
-                </td>
-
-                {/* Created Date */}
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-300 flex items-center">
-                    <CalendarIcon className="h-3 w-3 mr-1" />
-                    {formatDate(course.createdAt)}
-                  </div>
-                </td>
-
-                {/* Actions */}
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <div className="flex items-center justify-end space-x-2">
+                <td className="py-4 px-6">
+                  <div className="flex items-center gap-2 justify-end">
                     <button
                       onClick={() => onEditCourse(course)}
-                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                      className="p-2 text-gray-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
+                      title="Edit course"
                     >
-                      <PencilIcon className="h-3 w-3 mr-1" />
-                      Edit
+                      <PencilIcon className="h-4 w-4" />
                     </button>
-                    
                     <button
-                      onClick={() => handleDeleteCourse(course.id)}
-                      disabled={deletingCourses.has(course.id)}
-                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      onClick={() => onDeleteCourse(course.id)}
+                      className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                      title="Delete course"
                     >
-                      {deletingCourses.has(course.id) ? (
-                        <>
-                          <div className="animate-spin h-3 w-3 mr-1 border border-white border-t-transparent rounded-full"></div>
-                          Deleting...
-                        </>
-                      ) : (
-                        <>
-                          <TrashIcon className="h-3 w-3 mr-1" />
-                          Delete
-                        </>
-                      )}
+                      <TrashIcon className="h-4 w-4" />
                     </button>
                   </div>
                 </td>
@@ -268,21 +154,6 @@ export default function CoursesTable({
             ))}
           </tbody>
         </table>
-      </div>
-
-      {/* Table Footer */}
-      <div className="px-6 py-4 border-t border-white/10 bg-white/5">
-        <div className="flex items-center justify-between text-sm text-gray-400">
-          <div>
-            Total: {courses.length} courses
-          </div>
-          <button
-            onClick={onRefresh}
-            className="text-blue-400 hover:text-blue-300 transition-colors"
-          >
-            Refresh
-          </button>
-        </div>
       </div>
     </div>
   );
