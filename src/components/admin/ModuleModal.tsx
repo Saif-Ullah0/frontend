@@ -1,168 +1,134 @@
-// frontend/src/components/admin/ModuleModal.tsx
-"use client";
-
+// components/admin/ModuleModal.tsx - With chapters and paid/free toggle
 import { useState, useEffect } from 'react';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
 
 interface Module {
   id: number;
   title: string;
-  slug: string;
-  description: string;
-  order: number;
+  slug?: string;
+  description?: string;
+  price?: number;
+  isFree?: boolean;
   isPublished: boolean;
-  createdAt: string;
+  publishStatus?: string;
+  orderIndex?: number;
+  courseId: number;
   course: {
     id: number;
     title: string;
-    category: {
+    category?: {
+      id: number;
       name: string;
     };
   };
+  chapters?: Array<{
+    id: string;
+    title: string;
+    type: string;
+    publishStatus: string;
+    order?: number;
+  }>;
+  _count?: {
+    chapters?: number;
+  };
+  createdAt: string;
 }
 
 interface Course {
   id: number;
   title: string;
+  publishStatus?: string;
+}
+
+interface Chapter {
+  id?: string;
+  title: string;
+  description?: string;
+  type: 'TEXT' | 'VIDEO' | 'PDF' | 'QUIZ';
+  publishStatus: 'DRAFT' | 'PUBLISHED';
+  order: number;
 }
 
 interface ModuleModalProps {
-  module: Module | null; // null for create, module object for edit
+  module: Module | null;
   courses: Course[];
   onClose: () => void;
   onSuccess: () => void;
 }
 
-interface FormData {
-  title: string;
-  description: string;
-  courseId: number | '';
-  order: number;
-  isPublished: boolean;
-}
-
 export default function ModuleModal({ module, courses, onClose, onSuccess }: ModuleModalProps) {
-  const [formData, setFormData] = useState<FormData>({
+  const [formData, setFormData] = useState({
     title: '',
     description: '',
     courseId: '',
-    order: 1,
+    isFree: true,
+    price: 0,
     isPublished: false
   });
+
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isEditing = Boolean(module);
-
+  // Initialize form data
   useEffect(() => {
     if (module) {
       setFormData({
         title: module.title,
-        description: module.description,
-        courseId: module.course.id,
-        order: module.order,
+        description: module.description || '',
+        courseId: module.courseId.toString(),
+        isFree: module.isFree !== undefined ? module.isFree : (module.price === 0),
+        price: module.price || 0,
         isPublished: module.isPublished
       });
+
+      // Convert existing chapters
+      const existingChapters = module.chapters?.map((chapter, index) => ({
+        id: chapter.id,
+        title: chapter.title,
+        description: '',
+        type: (chapter.type as 'TEXT' | 'VIDEO' | 'PDF' | 'QUIZ') || 'TEXT',
+        publishStatus: (chapter.publishStatus as 'DRAFT' | 'PUBLISHED') || 'DRAFT',
+        order: chapter.order || index
+      })) || [];
+
+      setChapters(existingChapters);
     } else {
-      // For new modules, set default order as next available
-      const maxOrder = Math.max(...courses.map(() => 1), 0); // Simplified - you might want to get this from API
+      // Reset for new module
       setFormData({
         title: '',
         description: '',
-        courseId: courses.length > 0 ? courses[0].id : '',
-        order: maxOrder + 1,
+        courseId: '',
+        isFree: true,
+        price: 0,
         isPublished: false
       });
+      setChapters([]);
     }
-  }, [module, courses]);
-
-  const generateSlug = (title: string) => {
-    return title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
     setError(null);
+  }, [module]);
 
-    console.log('🔍 ModuleModal: Submitting form data:', formData);
-
-    try {
-      if (!formData.courseId) {
-        throw new Error('Please select a course');
-      }
-
-      const slug = generateSlug(formData.title);
-      const requestData = {
-        ...formData,
-        slug,
-        courseId: parseInt(formData.courseId.toString())
-      };
-
-      const url = isEditing 
-        ? `http://localhost:5000/api/admin/modules/${module!.id}`
-        : 'http://localhost:5000/api/admin/modules';
-      
-      const method = isEditing ? 'PUT' : 'POST';
-
-      console.log(`🔍 ModuleModal: Making ${method} request to:`, url);
-
-      const response = await fetch(url, {
-        method,
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestData)
-      });
-
-      console.log('🔍 ModuleModal: Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.json();
-      console.log('✅ ModuleModal: Module saved successfully:', result);
-
-      onSuccess();
-      
-    } catch (err: unknown) {
-      console.error('❌ ModuleModal: Error saving module:', err);
-      
-      const errorMessage = err instanceof Error ? err.message : 'Failed to save module';
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     
     if (type === 'checkbox') {
       const checked = (e.target as HTMLInputElement).checked;
+      if (name === 'isFree') {
+        setFormData(prev => ({
+          ...prev,
+          isFree: checked,
+          price: checked ? 0 : prev.price
+        }));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          [name]: checked
+        }));
+      }
+    } else if (name === 'price') {
       setFormData(prev => ({
         ...prev,
-        [name]: checked
-      }));
-    } else if (name === 'order') {
-      setFormData(prev => ({
-        ...prev,
-        [name]: parseInt(value) || 1
-      }));
-    } else if (name === 'courseId') {
-      setFormData(prev => ({
-        ...prev,
-        [name]: parseInt(value) || ''
+        price: parseFloat(value) || 0
       }));
     } else {
       setFormData(prev => ({
@@ -172,163 +138,325 @@ export default function ModuleModal({ module, courses, onClose, onSuccess }: Mod
     }
   };
 
-  const handleOverlayClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      onClose();
+  // Chapter management
+  const addChapter = () => {
+    const newChapter: Chapter = {
+      title: `Chapter ${chapters.length + 1}`,
+      description: '',
+      type: 'TEXT',
+      publishStatus: 'DRAFT',
+      order: chapters.length
+    };
+    setChapters([...chapters, newChapter]);
+  };
+
+  const updateChapter = (index: number, updates: Partial<Chapter>) => {
+    setChapters(chapters.map((chapter, i) => 
+      i === index ? { ...chapter, ...updates } : chapter
+    ));
+  };
+
+  const removeChapter = (index: number) => {
+    setChapters(chapters.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Validate required fields
+      if (!formData.title.trim()) {
+        throw new Error('Module title is required');
+      }
+      if (!formData.courseId) {
+        throw new Error('Please select a course');
+      }
+      if (!formData.isFree && formData.price <= 0) {
+        throw new Error('Price must be greater than 0 for paid modules');
+      }
+
+      const payload = {
+        title: formData.title.trim(),
+        description: formData.description.trim(),
+        courseId: parseInt(formData.courseId),
+        isFree: formData.isFree,
+        price: formData.isFree ? 0 : formData.price,
+        isPublished: formData.isPublished,
+        chapters: chapters.map(chapter => ({
+          id: chapter.id,
+          title: chapter.title,
+          description: chapter.description,
+          type: chapter.type,
+          publishStatus: chapter.publishStatus,
+          order: chapter.order
+        }))
+      };
+
+      const url = module 
+        ? `http://localhost:5000/api/admin/modules/${module.id}`
+        : 'http://localhost:5000/api/admin/modules';
+      
+      const method = module ? 'PUT' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to ${module ? 'update' : 'create'} module`);
+      }
+
+      onSuccess();
+    } catch (err) {
+      console.error('Error saving module:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div 
-      className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-sm flex items-center justify-center p-4 z-50"
-      onClick={handleOverlayClick}
-    >
-      <div className="bg-gray-800 backdrop-blur-lg border border-white/20 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-gray-900 border border-white/20 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
-          <h2 className="text-xl font-bold text-white">
-            {isEditing ? 'Edit Module' : 'Create New Module'}
+        <div className="flex justify-between items-center p-6 border-b border-white/10">
+          <h2 className="text-xl font-semibold text-white">
+            {module ? 'Edit Module' : 'Create New Module'}
           </h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+            className="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+            disabled={loading}
           >
-            <XMarkIcon className="h-5 w-5 text-gray-400" />
+            <XMarkIcon className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* Error Message */}
-          {error && (
-            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-              <p className="text-red-200 text-sm">{error}</p>
-            </div>
-          )}
-
-          {/* Module Title */}
-          <div>
-            <label htmlFor="title" className="block text-sm font-medium text-gray-300 mb-2">
-              Module Title *
-            </label>
-            <input
-              type="text"
-              id="title"
-              name="title"
-              required
-              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter module title"
-              value={formData.title}
-              onChange={handleInputChange}
-            />
-            {formData.title && (
-              <p className="text-xs text-gray-400 mt-1">
-                Slug: /{generateSlug(formData.title)}
-              </p>
+        <form onSubmit={handleSubmit} className="flex flex-col max-h-[calc(90vh-80px)]">
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {/* Error Message */}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                <p className="text-red-400 text-sm">{error}</p>
+              </div>
             )}
-          </div>
 
-          {/* Description */}
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-2">
-              Description *
-            </label>
-            <textarea
-              id="description"
-              name="description"
-              required
-              rows={3}
-              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder="Describe this module"
-              value={formData.description}
-              onChange={handleInputChange}
-            />
-          </div>
+            {/* Basic Information */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-white">Basic Information</h3>
 
-          {/* Course Selection */}
-          <div>
-            <label htmlFor="courseId" className="block text-sm font-medium text-gray-300 mb-2">
-              Course *
-            </label>
-            <select
-              id="courseId"
-              name="courseId"
-              required
-              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={formData.courseId}
-              onChange={handleInputChange}
-            >
-              <option value="">Select a course</option>
-              {courses.map(course => (
-                <option key={course.id} value={course.id}>
-                  {course.title}
-                </option>
-              ))}
-            </select>
-          </div>
+              {/* Module Title */}
+              <div>
+                <label htmlFor="title" className="block text-sm font-medium text-gray-300 mb-2">
+                  Module Title *
+                </label>
+                <input
+                  type="text"
+                  id="title"
+                  name="title"
+                  value={formData.title}
+                  onChange={handleInputChange}
+                  placeholder="Enter module title..."
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
 
-          {/* Order */}
-          <div>
-            <label htmlFor="order" className="block text-sm font-medium text-gray-300 mb-2">
-              Order in Course *
-            </label>
-            <input
-              type="number"
-              id="order"
-              name="order"
-              required
-              min="1"
-              className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="1"
-              value={formData.order}
-              onChange={handleInputChange}
-            />
-            <p className="text-xs text-gray-400 mt-1">
-              Order determines the sequence of modules in the course
-            </p>
-          </div>
+              {/* Description */}
+              <div>
+                <label htmlFor="description" className="block text-sm font-medium text-gray-300 mb-2">
+                  Description
+                </label>
+                <textarea
+                  id="description"
+                  name="description"
+                  rows={3}
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  placeholder="Enter module description..."
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
 
-          {/* Published Status */}
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="isPublished"
-              name="isPublished"
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              checked={formData.isPublished}
-              onChange={handleInputChange}
-            />
-            <label htmlFor="isPublished" className="ml-2 block text-sm text-gray-300">
-              Publish this module
-            </label>
-          </div>
-          <p className="text-xs text-gray-400">
-            Published modules will be visible to students
-          </p>
+              {/* Course Selection */}
+              <div>
+                <label htmlFor="courseId" className="block text-sm font-medium text-gray-300 mb-2">
+                  Course *
+                </label>
+                <select
+                  id="courseId"
+                  name="courseId"
+                  value={formData.courseId}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select a course...</option>
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id.toString()}>
+                      {course.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Form Actions */}
-          <div className="flex items-center justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !formData.title || !formData.description || !formData.courseId}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loading ? (
-                <>
-                  <div className="animate-spin h-4 w-4 mr-2 border border-white border-t-transparent rounded-full inline-block"></div>
-                  {isEditing ? 'Updating...' : 'Creating...'}
-                </>
+              {/* Pricing */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="isFree"
+                    name="isFree"
+                    checked={formData.isFree}
+                    onChange={handleInputChange}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <label htmlFor="isFree" className="text-sm font-medium text-gray-300">
+                    Free Module
+                  </label>
+                </div>
+
+                {!formData.isFree && (
+                  <div>
+                    <label htmlFor="price" className="block text-sm font-medium text-gray-300 mb-2">
+                      Price ($) *
+                    </label>
+                    <input
+                      type="number"
+                      id="price"
+                      name="price"
+                      value={formData.price}
+                      onChange={handleInputChange}
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required={!formData.isFree}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Published Status */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isPublished"
+                  name="isPublished"
+                  checked={formData.isPublished}
+                  onChange={handleInputChange}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <label htmlFor="isPublished" className="text-sm font-medium text-gray-300">
+                  Published (visible to students)
+                </label>
+              </div>
+            </div>
+
+            {/* Chapters Section */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium text-white">
+                  Chapters ({chapters.length})
+                </h3>
+                <button
+                  type="button"
+                  onClick={addChapter}
+                  className="flex items-center gap-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  <PlusIcon className="w-4 h-4" />
+                  Add Chapter
+                </button>
+              </div>
+
+              {chapters.length === 0 ? (
+                <div className="text-center py-8 text-gray-400 bg-white/5 rounded-lg border border-white/10">
+                  <p>No chapters yet. Add your first chapter!</p>
+                </div>
               ) : (
-                isEditing ? 'Update Module' : 'Create Module'
+                <div className="space-y-3">
+                  {chapters.map((chapter, index) => (
+                    <div key={index} className="border border-white/20 rounded-lg p-4 bg-white/5">
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 space-y-3">
+                          <input
+                            type="text"
+                            value={chapter.title}
+                            onChange={(e) => updateChapter(index, { title: e.target.value })}
+                            placeholder="Chapter title..."
+                            className="w-full px-3 py-2 bg-white/10 border border-white/20 rounded text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                          />
+                          
+                          <div className="grid grid-cols-2 gap-2">
+                            <select
+                              value={chapter.type}
+                              onChange={(e) => updateChapter(index, { type: e.target.value as Chapter['type'] })}
+                              className="px-2 py-1 bg-white/10 border border-white/20 rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="TEXT">Text</option>
+                              <option value="VIDEO">Video</option>
+                              <option value="PDF">PDF</option>
+                              <option value="QUIZ">Quiz</option>
+                            </select>
+                            <select
+                              value={chapter.publishStatus}
+                              onChange={(e) => updateChapter(index, { publishStatus: e.target.value as Chapter['publishStatus'] })}
+                              className="px-2 py-1 bg-white/10 border border-white/20 rounded text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="DRAFT">Draft</option>
+                              <option value="PUBLISHED">Published</option>
+                            </select>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeChapter(index)}
+                          className="p-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
-            </button>
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="border-t border-white/10 p-6 bg-white/5">
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={loading}
+                className="px-4 py-2 text-gray-300 bg-white/10 border border-white/20 rounded-lg hover:bg-white/20 font-medium transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading || !formData.title.trim() || !formData.courseId}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-w-[100px]"
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  </div>
+                ) : (
+                  module ? 'Update' : 'Create'
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>
