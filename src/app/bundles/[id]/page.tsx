@@ -1,3 +1,4 @@
+// frontend/src/app/bundles/[id]/page.tsx
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -6,28 +7,24 @@ import Link from 'next/link';
 import {
   ShoppingBagIcon,
   SparklesIcon,
-  ArrowTrendingUpIcon,
   CheckCircleIcon,
   ClockIcon,
   BookOpenIcon,
   AcademicCapIcon,
-  ChartBarIcon,
   EyeIcon,
   CurrencyDollarIcon,
   UserGroupIcon,
-  TagIcon,
-  StarIcon,
   GlobeAltIcon,
   ShoppingCartIcon,
   InformationCircleIcon,
   ExclamationTriangleIcon,
   ArrowLeftIcon,
-  CalendarIcon,
   PlayCircleIcon,
   DocumentTextIcon,
   FolderIcon,
   ChevronRightIcon,
-  LockClosedIcon
+  LockClosedIcon,
+  StarIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 
@@ -54,8 +51,7 @@ interface Bundle {
     id: number;
     name: string;
     email: string;
-    isAdmin: boolean;
-    bio?: string;
+    role: string;
   };
   moduleItems?: Array<{
     module: {
@@ -63,20 +59,12 @@ interface Bundle {
       title: string;
       description?: string;
       price: number;
-      duration: number;
+      isFree: boolean;
       course: {
         id: number;
         title: string;
-        imageUrl?: string;
         category: { name: string };
       };
-      chapters: Array<{
-        id: number;
-        title: string;
-        type: 'VIDEO' | 'TEXT' | 'QUIZ';
-        duration: number;
-        isFree?: boolean;
-      }>;
     };
   }>;
   courseItems?: Array<{
@@ -85,30 +73,10 @@ interface Bundle {
       title: string;
       description?: string;
       price: number;
+      isPaid: boolean;
       imageUrl?: string;
-      duration: number;
-      level: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
       category: { name: string };
-      modules: Array<{
-        id: number;
-        title: string;
-        duration: number;
-        chapters: Array<{
-          id: number;
-          title: string;
-          type: 'VIDEO' | 'TEXT' | 'QUIZ';
-          duration: number;
-        }>;
-      }>;
     };
-  }>;
-  recentPurchases?: Array<{
-    id: number;
-    user: {
-      id: number;
-      name: string;
-    };
-    createdAt: string;
   }>;
   createdAt: string;
   userOwnsItems?: boolean;
@@ -117,12 +85,12 @@ interface Bundle {
 
 export default function BundleDetailPage() {
   const params = useParams();
-  const bundleId = params.bundleId as string;
+  const bundleId = params.id as string;
   
   const [bundle, setBundle] = useState<Bundle | null>(null);
   const [loading, setLoading] = useState(true);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'contents' | 'instructor' | 'reviews'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'contents' | 'creator'>('overview');
 
   useEffect(() => {
     if (bundleId) {
@@ -142,7 +110,7 @@ export default function BundleDetailPage() {
         setBundle(data.bundle);
       } else {
         const errorData = await response.json();
-        toast.error(errorData.message || 'Failed to load bundle details');
+        toast.error(errorData.error || 'Failed to load bundle details');
       }
     } catch (error) {
       console.error('Error fetching bundle details:', error);
@@ -168,44 +136,16 @@ export default function BundleDetailPage() {
       const data = await response.json();
 
       if (response.ok) {
-        if (data.checkoutUrl) {
-          window.location.href = data.checkoutUrl;
-        } else {
-          toast.success('Bundle purchased successfully!');
-          fetchBundleDetails(); // Refresh to show purchased state
-        }
+        toast.success('Bundle purchased successfully!');
+        fetchBundleDetails(); // Refresh to show purchased state
       } else {
-        toast.error(data.message || data.error || 'Purchase failed');
+        toast.error(data.error || 'Purchase failed');
       }
     } catch (error) {
       console.error('Purchase error:', error);
       toast.error('Something went wrong');
     } finally {
       setPurchaseLoading(false);
-    }
-  };
-
-  const getLevelColor = (level: string) => {
-    switch (level) {
-      case 'BEGINNER':
-        return 'bg-green-500/20 text-green-400';
-      case 'INTERMEDIATE':
-        return 'bg-yellow-500/20 text-yellow-400';
-      case 'ADVANCED':
-        return 'bg-red-500/20 text-red-400';
-      default:
-        return 'bg-gray-500/20 text-gray-400';
-    }
-  };
-
-  const getChapterIcon = (type: string) => {
-    switch (type) {
-      case 'VIDEO':
-        return PlayCircleIcon;
-      case 'QUIZ':
-        return CheckCircleIcon;
-      default:
-        return DocumentTextIcon;
     }
   };
 
@@ -239,20 +179,9 @@ export default function BundleDetailPage() {
     );
   }
 
-  const totalDuration = bundle.type === 'COURSE' 
-    ? bundle.courseItems?.reduce((sum, item) => sum + (item.course.duration || 0), 0) || 0
-    : bundle.moduleItems?.reduce((sum, item) => sum + (item.module.duration || 0), 0) || 0;
-
-  const totalChapters = bundle.type === 'COURSE'
-    ? bundle.courseItems?.reduce((sum, item) => sum + item.course.modules.reduce((modSum, mod) => modSum + mod.chapters.length, 0), 0) || 0
-    : bundle.moduleItems?.reduce((sum, item) => sum + (item.module.chapters?.length || 0), 0) || 0;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e]">
-      {/* Background Effects */}
-      <div className="absolute top-[-100px] left-[-100px] w-[500px] h-[500px] bg-gradient-to-r from-blue-500/15 to-purple-500/15 blur-[160px] rounded-full animate-pulse-slow"></div>
-
-      <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
           <Link href="/shop/bundles" className="hover:text-white transition-colors">Bundle Marketplace</Link>
@@ -261,22 +190,14 @@ export default function BundleDetailPage() {
         </div>
 
         {/* Bundle Header */}
-        <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl mb-8">
+        <div className="bg-white/5 border border-white/10 rounded-xl p-8 mb-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Bundle Image/Preview */}
+            {/* Bundle Preview */}
             <div className="lg:col-span-1">
-              <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-blue-500/20 to-purple-500/20 aspect-video mb-6">
-                {bundle.type === 'COURSE' && bundle.courseItems?.[0]?.course.imageUrl ? (
-                  <img
-                    src={bundle.courseItems[0].course.imageUrl}
-                    alt={bundle.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <ShoppingBagIcon className="w-20 h-20 text-white/50" />
-                  </div>
-                )}
+              <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-blue-500/20 to-purple-500/20 aspect-video mb-6">
+                <div className="w-full h-full flex items-center justify-center">
+                  <ShoppingBagIcon className="w-20 h-20 text-white/50" />
+                </div>
                 
                 {/* Price Badge */}
                 <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-xl rounded-xl px-4 py-2">
@@ -305,7 +226,7 @@ export default function BundleDetailPage() {
                       <span className="font-semibold">Already Own Content</span>
                     </div>
                     <p className="text-yellow-200 text-sm">
-                      You already own some items in this bundle. Consider browsing other bundles instead.
+                      You already own some items in this bundle.
                     </p>
                   </div>
                 ) : (
@@ -377,7 +298,7 @@ export default function BundleDetailPage() {
                 
                 {bundle.isPopular && (
                   <div className="flex items-center gap-1 bg-red-500/20 text-red-400 px-3 py-2 rounded-full text-sm font-bold">
-                    <ArrowTrendingUpIcon className="w-4 h-4" />
+                    <StarIcon className="w-4 h-4" />
                     <span>Popular</span>
                   </div>
                 )}
@@ -389,7 +310,7 @@ export default function BundleDetailPage() {
               )}
 
               {/* Bundle Overview Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                 <div className="bg-white/5 rounded-xl p-4">
                   <div className="flex items-center gap-3">
                     <FolderIcon className="w-6 h-6 text-blue-400" />
@@ -402,20 +323,10 @@ export default function BundleDetailPage() {
 
                 <div className="bg-white/5 rounded-xl p-4">
                   <div className="flex items-center gap-3">
-                    <DocumentTextIcon className="w-6 h-6 text-purple-400" />
+                    <CurrencyDollarIcon className="w-6 h-6 text-green-400" />
                     <div>
-                      <p className="text-gray-400 text-sm">Chapters</p>
-                      <p className="text-white font-bold">{totalChapters}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white/5 rounded-xl p-4">
-                  <div className="flex items-center gap-3">
-                    <ClockIcon className="w-6 h-6 text-green-400" />
-                    <div>
-                      <p className="text-gray-400 text-sm">Duration</p>
-                      <p className="text-white font-bold">{Math.round(totalDuration / 60)}h</p>
+                      <p className="text-gray-400 text-sm">Value</p>
+                      <p className="text-white font-bold">${bundle.individualTotal.toFixed(2)}</p>
                     </div>
                   </div>
                 </div>
@@ -442,7 +353,7 @@ export default function BundleDetailPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3">
                       <h4 className="font-semibold text-white">{bundle.user.name}</h4>
-                      {bundle.user.isAdmin && (
+                      {bundle.user.role === 'ADMIN' && (
                         <span className="px-2 py-1 bg-orange-500/20 text-orange-400 text-xs rounded-full">
                           Verified Creator
                         </span>
@@ -484,9 +395,9 @@ export default function BundleDetailPage() {
             Contents ({bundle.totalItems})
           </button>
           <button
-            onClick={() => setActiveTab('instructor')}
+            onClick={() => setActiveTab('creator')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-300 whitespace-nowrap ${
-              activeTab === 'instructor'
+              activeTab === 'creator'
                 ? 'bg-orange-500 text-white'
                 : 'text-gray-400 hover:text-white hover:bg-white/10'
             }`}
@@ -497,16 +408,14 @@ export default function BundleDetailPage() {
         </div>
 
         {/* Tab Content */}
-        <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl">
+        <div className="bg-white/5 border border-white/10 rounded-xl p-8">
           {activeTab === 'overview' && (
             <div className="space-y-8">
               <div>
                 <h2 className="text-2xl font-bold text-white mb-4">What's Included</h2>
-                <div className="prose prose-invert max-w-none">
-                  <p className="text-gray-300 leading-relaxed">
-                    This comprehensive {bundle.type.toLowerCase()} bundle provides you with access to {bundle.totalItems} carefully selected {bundle.type === 'COURSE' ? 'courses' : 'modules'} designed to accelerate your learning journey.
-                  </p>
-                </div>
+                <p className="text-gray-300 leading-relaxed">
+                  This comprehensive {bundle.type.toLowerCase()} bundle provides you with access to {bundle.totalItems} carefully selected {bundle.type === 'COURSE' ? 'courses' : 'modules'} designed to accelerate your learning journey.
+                </p>
               </div>
 
               {/* Value Proposition */}
@@ -541,123 +450,51 @@ export default function BundleDetailPage() {
                     <CheckCircleIcon className="w-6 h-6 text-yellow-400 flex-shrink-0" />
                     <div>
                       <p className="text-white font-semibold">Expert Content</p>
-                      <p className="text-gray-400 text-sm">Created by {bundle.user.isAdmin ? 'verified' : 'experienced'} instructors</p>
+                      <p className="text-gray-400 text-sm">Created by {bundle.user.role === 'ADMIN' ? 'verified' : 'experienced'} instructors</p>
                     </div>
                   </div>
                 </div>
               </div>
-
-              {/* Recent Activity */}
-              {bundle.recentPurchases && bundle.recentPurchases.length > 0 && (
-                <div>
-                  <h3 className="text-xl font-semibold text-white mb-4">Recent Purchases</h3>
-                  <div className="space-y-3">
-                    {bundle.recentPurchases.slice(0, 5).map((purchase) => (
-                      <div key={purchase.id} className="flex items-center justify-between bg-white/5 rounded-xl p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
-                            <span className="text-white font-semibold text-sm">
-                              {purchase.user.name.charAt(0).toUpperCase()}
-                            </span>
-                          </div>
-                          <div>
-                            <p className="text-white font-medium">{purchase.user.name}</p>
-                            <p className="text-gray-400 text-sm">Purchased this bundle</p>
-                          </div>
-                        </div>
-                        <div className="text-gray-400 text-sm">
-                          {new Date(purchase.createdAt).toLocaleDateString()}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
           {activeTab === 'contents' && (
             <div>
               <h2 className="text-2xl font-bold text-white mb-6">Bundle Contents</h2>
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {bundle.type === 'COURSE' && bundle.courseItems ? (
                   bundle.courseItems.map((item, index) => (
-                    <div key={item.course.id} className="border border-white/10 rounded-2xl overflow-hidden">
-                      <div className="bg-white/5 p-6">
-                        <div className="flex items-start gap-6">
-                          <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                            {item.course.imageUrl ? (
-                              <img
-                                src={item.course.imageUrl}
-                                alt={item.course.title}
-                                className="w-full h-full object-cover rounded-xl"
-                              />
-                            ) : (
-                              <BookOpenIcon className="w-8 h-8 text-white/50" />
-                            )}
+                    <div key={item.course.id} className="border border-white/10 rounded-xl p-6">
+                      <div className="flex items-start gap-6">
+                        <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                          {item.course.imageUrl ? (
+                            <img
+                              src={item.course.imageUrl}
+                              alt={item.course.title}
+                              className="w-full h-full object-cover rounded-xl"
+                            />
+                          ) : (
+                            <BookOpenIcon className="w-8 h-8 text-white/50" />
+                          )}
+                        </div>
+                        
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-xl font-bold text-white">{item.course.title}</h3>
+                            <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm font-medium">
+                              {item.course.category.name}
+                            </span>
                           </div>
                           
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <h3 className="text-xl font-bold text-white">{item.course.title}</h3>
-                              <span className={`px-3 py-1 rounded-full text-sm font-medium ${getLevelColor(item.course.level)}`}>
-                                {item.course.level}
-                              </span>
-                              <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm font-medium">
-                                {item.course.category.name}
-                              </span>
+                          {item.course.description && (
+                            <p className="text-gray-400 mb-4">{item.course.description}</p>
+                          )}
+                          
+                          <div className="flex items-center gap-6 text-sm text-gray-400">
+                            <div className="flex items-center gap-1">
+                              <CurrencyDollarIcon className="w-4 h-4" />
+                              <span>${item.course.price.toFixed(2)} value</span>
                             </div>
-                            
-                            {item.course.description && (
-                              <p className="text-gray-400 mb-4">{item.course.description}</p>
-                            )}
-                            
-                            <div className="flex items-center gap-6 text-sm text-gray-400">
-                              <div className="flex items-center gap-1">
-                                <FolderIcon className="w-4 h-4" />
-                                <span>{item.course.modules.length} modules</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <ClockIcon className="w-4 h-4" />
-                                <span>{Math.round(item.course.duration / 60)}h</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <CurrencyDollarIcon className="w-4 h-4" />
-                                <span>${item.course.price.toFixed(2)} value</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Course Modules Preview */}
-                      <div className="border-t border-white/10">
-                        <div className="p-4">
-                          <h4 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wide">
-                            Course Modules ({item.course.modules.length})
-                          </h4>
-                          <div className="space-y-2">
-                            {item.course.modules.slice(0, 3).map((module, moduleIndex) => (
-                              <div key={module.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-6 h-6 bg-purple-500/20 rounded-full flex items-center justify-center">
-                                    <span className="text-purple-400 font-semibold text-xs">{moduleIndex + 1}</span>
-                                  </div>
-                                  <div>
-                                    <p className="text-white font-medium">{module.title}</p>
-                                    <p className="text-gray-400 text-sm">{module.chapters.length} chapters</p>
-                                  </div>
-                                </div>
-                                <div className="text-gray-400 text-sm">
-                                  {Math.round(module.duration / 60)} min
-                                </div>
-                              </div>
-                            ))}
-                            {item.course.modules.length > 3 && (
-                              <p className="text-center text-gray-400 text-sm py-2">
-                                +{item.course.modules.length - 3} more modules
-                              </p>
-                            )}
                           </div>
                         </div>
                       </div>
@@ -665,7 +502,7 @@ export default function BundleDetailPage() {
                   ))
                 ) : bundle.moduleItems ? (
                   bundle.moduleItems.map((item, index) => (
-                    <div key={item.module.id} className="border border-white/10 rounded-2xl p-6">
+                    <div key={item.module.id} className="border border-white/10 rounded-xl p-6">
                       <div className="flex items-start gap-6">
                         <div className="w-16 h-16 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
                           <FolderIcon className="w-8 h-8 text-white/50" />
@@ -680,55 +517,19 @@ export default function BundleDetailPage() {
                           </div>
                           
                           <p className="text-gray-400 text-sm mb-2">
-                            From course: <Link href={`/courses/${item.module.course.id}`} className="text-blue-400 hover:text-blue-300">{item.module.course.title}</Link>
+                            From course: <span className="text-blue-400">{item.module.course.title}</span>
                           </p>
                           
                           {item.module.description && (
                             <p className="text-gray-400 mb-4">{item.module.description}</p>
                           )}
                           
-                          <div className="flex items-center gap-6 text-sm text-gray-400 mb-4">
-                            <div className="flex items-center gap-1">
-                              <DocumentTextIcon className="w-4 h-4" />
-                              <span>{item.module.chapters?.length || 0} chapters</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <ClockIcon className="w-4 h-4" />
-                              <span>{Math.round(item.module.duration / 60)} min</span>
-                            </div>
+                          <div className="flex items-center gap-6 text-sm text-gray-400">
                             <div className="flex items-center gap-1">
                               <CurrencyDollarIcon className="w-4 h-4" />
-                              <span>${item.module.price.toFixed(2)} value</span>
+                              <span>{item.module.isFree ? 'Free' : `$${item.module.price.toFixed(2)} value`}</span>
                             </div>
                           </div>
-                          
-                          {/* Chapter Preview */}
-                          {item.module.chapters && item.module.chapters.length > 0 && (
-                            <div className="space-y-2">
-                              {item.module.chapters.slice(0, 3).map((chapter, chapterIndex) => {
-                                const ChapterIcon = getChapterIcon(chapter.type);
-                                return (
-                                  <div key={chapter.id} className="flex items-center justify-between p-2 bg-white/5 rounded-lg">
-                                    <div className="flex items-center gap-2">
-                                      <ChapterIcon className="w-4 h-4 text-gray-400" />
-                                      <span className="text-white text-sm">{chapter.title}</span>
-                                      {chapter.isFree && (
-                                        <span className="text-green-400 text-xs">Free</span>
-                                      )}
-                                    </div>
-                                    <span className="text-gray-400 text-xs">
-                                      {Math.round(chapter.duration / 60)} min
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                              {item.module.chapters.length > 3 && (
-                                <p className="text-center text-gray-400 text-sm py-1">
-                                  +{item.module.chapters.length - 3} more chapters
-                                </p>
-                              )}
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
@@ -738,10 +539,10 @@ export default function BundleDetailPage() {
             </div>
           )}
 
-          {activeTab === 'instructor' && (
+          {activeTab === 'creator' && (
             <div>
               <h2 className="text-2xl font-bold text-white mb-6">Meet the Creator</h2>
-              <div className="bg-white/5 rounded-2xl p-8">
+              <div className="bg-white/5 rounded-xl p-8">
                 <div className="flex items-start gap-8">
                   <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
                     <span className="text-white font-bold text-3xl">
@@ -751,14 +552,14 @@ export default function BundleDetailPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-4 mb-4">
                       <h3 className="text-3xl font-bold text-white">{bundle.user.name}</h3>
-                      {bundle.user.isAdmin && (
+                      {bundle.user.role === 'ADMIN' && (
                         <span className="px-4 py-2 bg-orange-500/20 text-orange-400 text-sm rounded-full font-semibold">
                           Verified Creator
                         </span>
                       )}
                     </div>
                     <p className="text-gray-300 leading-relaxed mb-6">
-                      {bundle.user.bio || 'An experienced educator and content creator passionate about sharing knowledge and helping students achieve their learning goals through carefully curated educational content.'}
+                      An experienced educator and content creator passionate about sharing knowledge and helping students achieve their learning goals through carefully curated educational content.
                     </p>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-6 text-sm">
                       <div className="flex items-center gap-2">
@@ -770,7 +571,7 @@ export default function BundleDetailPage() {
                         <span className="text-gray-400">{bundle.salesCount} students</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <CalendarIcon className="w-5 h-5 text-purple-400" />
+                        <ClockIcon className="w-5 h-5 text-purple-400" />
                         <span className="text-gray-400">Member since {new Date(bundle.createdAt).getFullYear()}</span>
                       </div>
                     </div>
@@ -781,14 +582,6 @@ export default function BundleDetailPage() {
           )}
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes pulse-slow {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 0.6; transform: scale(1.05); }
-        }
-        .animate-pulse-slow { animation: pulse-slow 4s ease-in-out infinite; }
-      `}</style>
     </div>
   );
 }

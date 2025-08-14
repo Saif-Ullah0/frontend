@@ -2,152 +2,159 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { 
-  PlusIcon, 
-  ShoppingBagIcon, 
-  XMarkIcon,
-  MagnifyingGlassIcon,
-  TagIcon,
-  CalculatorIcon
+import {
+  PlusIcon,
+  TrashIcon,
+  BookOpenIcon,
+  FolderIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  InformationCircleIcon,
+  CurrencyDollarIcon,
+  GlobeAltIcon,
+  LockClosedIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+
+interface Course {
+  id: number;
+  title: string;
+  description?: string;
+  price: number;
+  isPaid: boolean;
+  imageUrl?: string;
+  category: { name: string };
+}
 
 interface Module {
   id: number;
   title: string;
+  description?: string;
   price: number;
-  duration?: number;
-  isPublished: boolean;
   isFree: boolean;
   course: {
-    id: number;
     title: string;
+    category: { name: string };
   };
 }
 
 interface BundleCreatorProps {
-  onBundleCreated?: () => void;
-  className?: string;
+  onBundleCreated: () => void;
 }
 
-export default function BundleCreator({ onBundleCreated, className = "" }: BundleCreatorProps) {
+export default function BundleCreator({ onBundleCreated }: BundleCreatorProps) {
+  const [bundleType, setBundleType] = useState<'COURSE' | 'MODULE'>('COURSE');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [discount, setDiscount] = useState(10);
+  const [isPublic, setIsPublic] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<number[]>([]);
+  
+  const [availableCourses, setAvailableCourses] = useState<Course[]>([]);
   const [availableModules, setAvailableModules] = useState<Module[]>([]);
-  const [filteredModules, setFilteredModules] = useState<Module[]>([]);
-  const [selectedModules, setSelectedModules] = useState<number[]>([]);
-  const [bundleName, setBundleName] = useState('');
-  const [bundleDescription, setBundleDescription] = useState('');
-  const [discount, setDiscount] = useState(0);
-  const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showCreator, setShowCreator] = useState(false);
-  const [loadingModules, setLoadingModules] = useState(true);
+  const [createLoading, setCreateLoading] = useState(false);
 
   useEffect(() => {
-    if (showCreator) {
+    if (bundleType === 'COURSE') {
+      fetchAvailableCourses();
+    } else {
       fetchAvailableModules();
     }
-  }, [showCreator]);
+    setSelectedItems([]); // Reset selections when type changes
+  }, [bundleType]);
 
-  useEffect(() => {
-    // Filter modules based on search term
-    const filtered = availableModules.filter(module =>
-      module.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      module.course.title.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-    setFilteredModules(filtered);
-  }, [availableModules, searchTerm]);
-
-  const fetchAvailableModules = async () => {
-    setLoadingModules(true);
+  const fetchAvailableCourses = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/courses', {
+      setLoading(true);
+      const response = await fetch('http://localhost:5000/api/bundles/items/courses', {
         credentials: 'include'
       });
-      
+
       if (response.ok) {
-        const courses = await response.json();
-        console.log('📚 All courses received:', courses.length, 'courses');
-        
-        // ✅ IMPROVED: Better filtering logic with debugging
-        const allModules: Module[] = [];
-        
-        courses.forEach((course: any, courseIndex: number) => {
-          console.log(`📖 Course ${courseIndex + 1}: "${course.title}" has ${course.modules?.length || 0} modules`);
-          
-          if (course.modules && Array.isArray(course.modules)) {
-            course.modules.forEach((module: any, moduleIndex: number) => {
-              const isValidModule = module.isPublished && module.price > 0;
-              console.log(`  📄 Module ${moduleIndex + 1}: "${module.title}" - Price: $${module.price}, Published: ${module.isPublished}, Valid: ${isValidModule}`);
-              
-              if (isValidModule) {
-                allModules.push({
-                  ...module,
-                  course: { id: course.id, title: course.title }
-                });
-              }
-            });
-          }
-        });
-
-        console.log('✅ Total valid modules found:', allModules.length);
-        console.log('📋 Valid modules list:', allModules.map(m => `${m.title} ($${m.price})`));
-
-        setAvailableModules(allModules);
-        setFilteredModules(allModules);
+        const data = await response.json();
+        setAvailableCourses(data.courses || []);
       } else {
-        console.error('❌ Failed to fetch courses:', response.status, response.statusText);
-        toast.error('Failed to load courses');
+        toast.error('Failed to load available courses');
       }
     } catch (error) {
-      console.error('❌ Error fetching modules:', error);
-      toast.error('Failed to load modules');
+      console.error('Error fetching courses:', error);
+      toast.error('Failed to load courses');
     } finally {
-      setLoadingModules(false);
+      setLoading(false);
     }
   };
 
-  const toggleModuleSelection = (moduleId: number) => {
-    setSelectedModules(prev => 
-      prev.includes(moduleId) 
-        ? prev.filter(id => id !== moduleId)
-        : [...prev, moduleId]
+  const fetchAvailableModules = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('http://localhost:5000/api/bundles/items/modules', {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAvailableModules(data.modules || []);
+      } else {
+        toast.error('Failed to load available modules');
+      }
+    } catch (error) {
+      console.error('Error fetching modules:', error);
+      toast.error('Failed to load modules');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleItemToggle = (itemId: number) => {
+    setSelectedItems(prev => 
+      prev.includes(itemId) 
+        ? prev.filter(id => id !== itemId)
+        : [...prev, itemId]
     );
   };
 
   const calculatePricing = () => {
-    const totalPrice = selectedModules.reduce((sum, moduleId) => {
-      const module = availableModules.find(m => m.id === moduleId);
-      return sum + (module?.price || 0);
-    }, 0);
+    let totalPrice = 0;
     
-    const discountAmount = (totalPrice * discount) / 100;
-    const finalPrice = totalPrice - discountAmount;
+    if (bundleType === 'COURSE') {
+      const selectedCourses = availableCourses.filter(course => selectedItems.includes(course.id));
+      totalPrice = selectedCourses.reduce((sum, course) => sum + (course.isPaid ? course.price : 0), 0);
+    } else {
+      const selectedModules = availableModules.filter(module => selectedItems.includes(module.id));
+      totalPrice = selectedModules.reduce((sum, module) => sum + (!module.isFree ? module.price : 0), 0);
+    }
     
-    return { totalPrice, discountAmount, finalPrice };
+    const finalPrice = totalPrice * (1 - discount / 100);
+    const savings = totalPrice - finalPrice;
+    
+    return { totalPrice, finalPrice, savings };
   };
 
   const handleCreateBundle = async () => {
-    if (!bundleName.trim()) {
-      toast.error('Please enter a bundle name');
-      return;
-    }
-    
-    if (selectedModules.length === 0) {
-      toast.error('Please select at least one module');
+    if (!name.trim()) {
+      toast.error('Bundle name is required');
       return;
     }
 
-    setLoading(true);
-    
+    if (selectedItems.length === 0) {
+      toast.error(`Please select at least one ${bundleType.toLowerCase()}`);
+      return;
+    }
+
     try {
-      const response = await fetch('http://localhost:5000/api/bundles/create/modules', {
+      setCreateLoading(true);
+      
+      const response = await fetch('http://localhost:5000/api/bundles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: bundleName,
-          description: bundleDescription,
-          moduleIds: selectedModules,
-          discount
+          name: name.trim(),
+          description: description.trim() || null,
+          type: bundleType,
+          itemIds: selectedItems,
+          discount,
+          isPublic
         }),
         credentials: 'include'
       });
@@ -155,267 +162,249 @@ export default function BundleCreator({ onBundleCreated, className = "" }: Bundl
       const data = await response.json();
 
       if (response.ok) {
-        toast.success('Bundle created successfully! 🎉');
-        resetForm();
-        setShowCreator(false);
-        onBundleCreated?.();
+        toast.success('Bundle created successfully!');
+        // Reset form
+        setName('');
+        setDescription('');
+        setDiscount(10);
+        setIsPublic(false);
+        setSelectedItems([]);
+        onBundleCreated();
       } else {
         toast.error(data.error || 'Failed to create bundle');
       }
     } catch (error) {
       console.error('Error creating bundle:', error);
-      toast.error('Something went wrong. Please try again.');
+      toast.error('Failed to create bundle');
     } finally {
-      setLoading(false);
+      setCreateLoading(false);
     }
   };
 
-  const resetForm = () => {
-    setBundleName('');
-    setBundleDescription('');
-    setSelectedModules([]);
-    setDiscount(0);
-    setSearchTerm('');
-  };
-
-  const { totalPrice, discountAmount, finalPrice } = calculatePricing();
-
-  if (!showCreator) {
-    return (
-      <button
-        onClick={() => setShowCreator(true)}
-        className={`w-full p-6 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-2xl hover:from-blue-500/30 hover:to-purple-500/30 transition-all duration-300 flex items-center justify-center gap-3 group ${className}`}
-      >
-        <PlusIcon className="w-6 h-6 text-blue-400 group-hover:scale-110 transition-transform" />
-        <span className="text-lg font-semibold text-white">Create New Module Bundle</span>
-      </button>
-    );
-  }
+  const { totalPrice, finalPrice, savings } = calculatePricing();
 
   return (
-    <div className={`bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl ${className}`}>
+    <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h3 className="text-2xl font-bold text-white mb-2">Create Module Bundle</h3>
-          <p className="text-gray-400">Select modules and create your custom learning package</p>
-        </div>
-        <button
-          onClick={() => {
-            setShowCreator(false);
-            resetForm();
-          }}
-          className="p-2 text-gray-400 hover:text-white transition-colors"
-        >
-          <XMarkIcon className="w-6 h-6" />
-        </button>
+      <div className="text-center">
+        <h2 className="text-3xl font-bold text-white mb-4">Create New Bundle</h2>
+        <p className="text-gray-400">Package your content together and offer it at a discounted price</p>
       </div>
 
-      {/* Bundle Details Form */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <div className="space-y-6">
+      {/* Bundle Type Selection */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+        <h3 className="text-xl font-semibold text-white mb-4">1. Choose Bundle Type</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button
+            onClick={() => setBundleType('COURSE')}
+            className={`p-6 rounded-xl border-2 transition-all duration-300 ${
+              bundleType === 'COURSE'
+                ? 'border-green-500 bg-green-500/10 text-green-400'
+                : 'border-white/20 bg-white/5 text-gray-400 hover:border-green-500/50'
+            }`}
+          >
+            <BookOpenIcon className="w-12 h-12 mx-auto mb-4" />
+            <h4 className="text-lg font-semibold mb-2">Course Bundle</h4>
+            <p className="text-sm">Package multiple complete courses together</p>
+          </button>
+
+          <button
+            onClick={() => setBundleType('MODULE')}
+            className={`p-6 rounded-xl border-2 transition-all duration-300 ${
+              bundleType === 'MODULE'
+                ? 'border-purple-500 bg-purple-500/10 text-purple-400'
+                : 'border-white/20 bg-white/5 text-gray-400 hover:border-purple-500/50'
+            }`}
+          >
+            <FolderIcon className="w-12 h-12 mx-auto mb-4" />
+            <h4 className="text-lg font-semibold mb-2">Module Bundle</h4>
+            <p className="text-sm">Package individual modules from different courses</p>
+          </button>
+        </div>
+      </div>
+
+      {/* Bundle Details */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+        <h3 className="text-xl font-semibold text-white mb-4">2. Bundle Details</h3>
+        <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-3">
-              Bundle Name *
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Bundle Name *</label>
             <input
               type="text"
-              value={bundleName}
-              onChange={(e) => setBundleName(e.target.value)}
-              placeholder="e.g., Frontend Development Mastery"
-              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Enter bundle name"
+              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-3">
-              Description (Optional)
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
             <textarea
-              value={bundleDescription}
-              onChange={(e) => setBundleDescription(e.target.value)}
-              placeholder="Describe what this bundle includes and who it's for..."
-              rows={4}
-              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all resize-none"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe what's included in this bundle"
+              rows={3}
+              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
             />
           </div>
-        </div>
 
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-3">
-              <TagIcon className="w-4 h-4 inline mr-2" />
-              Discount Percentage
-            </label>
-            <div className="relative">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Discount Percentage</label>
               <input
                 type="number"
-                value={discount}
-                onChange={(e) => setDiscount(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
                 min="0"
                 max="100"
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                value={discount}
+                onChange={(e) => setDiscount(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-blue-500"
               />
-              <span className="absolute right-3 top-3 text-gray-400">%</span>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Visibility</label>
+              <button
+                onClick={() => setIsPublic(!isPublic)}
+                className={`w-full px-4 py-3 rounded-xl font-medium transition-all duration-300 flex items-center justify-center gap-2 ${
+                  isPublic
+                    ? 'bg-blue-500/20 border border-blue-500/30 text-blue-400'
+                    : 'bg-gray-500/20 border border-gray-500/30 text-gray-400'
+                }`}
+              >
+                {isPublic ? <GlobeAltIcon className="w-5 h-5" /> : <LockClosedIcon className="w-5 h-5" />}
+                {isPublic ? 'Public' : 'Private'}
+              </button>
             </div>
           </div>
-
-          {/* Pricing Preview */}
-          {selectedModules.length > 0 && (
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-              <h4 className="font-semibold text-white mb-3 flex items-center gap-2">
-                <CalculatorIcon className="w-4 h-4" />
-                Pricing Preview
-              </h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between text-gray-300">
-                  <span>Modules ({selectedModules.length}):</span>
-                  <span>${totalPrice.toFixed(2)}</span>
-                </div>
-                {discount > 0 && (
-                  <div className="flex justify-between text-green-400">
-                    <span>Discount ({discount}%):</span>
-                    <span>-${discountAmount.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-lg font-bold text-white border-t border-white/10 pt-2">
-                  <span>Final Price:</span>
-                  <span>${finalPrice.toFixed(2)}</span>
-                </div>
-                {discount > 0 && (
-                  <div className="text-xs text-green-400 text-center">
-                    Save ${discountAmount.toFixed(2)}!
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Module Selection */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-6">
-          <h4 className="text-xl font-semibold text-white">
-            Select Modules ({selectedModules.length} selected)
-          </h4>
-          
-          {/* Search */}
-          <div className="relative w-64">
-            <MagnifyingGlassIcon className="w-5 h-5 absolute left-3 top-3 text-gray-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search modules..."
-              className="w-full pl-10 pr-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 text-sm"
-            />
-          </div>
-        </div>
+      {/* Item Selection */}
+      <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+        <h3 className="text-xl font-semibold text-white mb-4">
+          3. Select {bundleType === 'COURSE' ? 'Courses' : 'Modules'}
+        </h3>
 
-        {/* Module List */}
-        <div className="max-h-96 overflow-y-auto space-y-3 custom-scrollbar">
-          {loadingModules ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-            </div>
-          ) : filteredModules.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-gray-400 mb-2">
-                {searchTerm ? 'No modules match your search' : 'No published paid modules available'}
-              </div>
-              <div className="text-sm text-gray-500">
-                {searchTerm ? 'Try a different search term' : 'Only modules with price > $0 can be bundled'}
-              </div>
-            </div>
-          ) : (
-            filteredModules.map((module) => (
-              <div
-                key={module.id}
-                className={`p-4 rounded-xl border transition-all cursor-pointer hover:scale-[1.02] ${
-                  selectedModules.includes(module.id)
-                    ? 'bg-blue-500/20 border-blue-500/50 ring-2 ring-blue-500/30'
-                    : 'bg-white/5 border-white/10 hover:bg-white/10'
-                }`}
-                onClick={() => toggleModuleSelection(module.id)}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <h5 className="font-medium text-white mb-1">{module.title}</h5>
-                    <p className="text-sm text-gray-400 mb-2">{module.course.title}</p>
-                    {module.duration && (
-                      <div className="text-xs text-gray-500">
-                        {module.duration} minutes
+        {loading ? (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading available {bundleType === 'COURSE' ? 'courses' : 'modules'}...</p>
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {(bundleType === 'COURSE' ? availableCourses : availableModules).map((item) => {
+              const isSelected = selectedItems.includes(item.id);
+              const price = bundleType === 'COURSE' ? (item as Course).price : (item as Module).price;
+              const isFree = bundleType === 'COURSE' ? !(item as Course).isPaid : (item as Module).isFree;
+              const category = bundleType === 'COURSE' 
+                ? (item as Course).category.name 
+                : (item as Module).course.category.name;
+
+              return (
+                <div
+                  key={item.id}
+                  onClick={() => handleItemToggle(item.id)}
+                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all duration-300 ${
+                    isSelected
+                      ? 'border-blue-500 bg-blue-500/10'
+                      : 'border-white/10 bg-white/5 hover:border-blue-500/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h4 className="font-semibold text-white">{item.title}</h4>
+                        <span className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded-full">
+                          {category}
+                        </span>
+                        {bundleType === 'MODULE' && (
+                          <span className="px-2 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full">
+                            {(item as Module).course.title}
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <div className="text-right ml-4">
-                    <div className="text-lg font-semibold text-white mb-2">
-                      ${module.price}
-                    </div>
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                      selectedModules.includes(module.id)
-                        ? 'bg-blue-500 border-blue-500'
-                        : 'border-gray-400 hover:border-blue-400'
-                    }`}>
-                      {selectedModules.includes(module.id) && (
-                        <span className="text-white text-sm">✓</span>
+                      {item.description && (
+                        <p className="text-gray-400 text-sm line-clamp-2">{item.description}</p>
                       )}
                     </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <span className={`font-bold ${isFree ? 'text-green-400' : 'text-white'}`}>
+                          {isFree ? 'Free' : `$${price.toFixed(2)}`}
+                        </span>
+                      </div>
+                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
+                        isSelected ? 'border-blue-500 bg-blue-500' : 'border-gray-400'
+                      }`}>
+                        {isSelected && <CheckCircleIcon className="w-4 h-4 text-white" />}
+                      </div>
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+
+            {(bundleType === 'COURSE' ? availableCourses : availableModules).length === 0 && (
+              <div className="text-center py-8">
+                <InformationCircleIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-400">
+                  No {bundleType === 'COURSE' ? 'courses' : 'modules'} available for bundling
+                </p>
               </div>
-            ))
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex gap-4">
-        <button
-          onClick={() => {
-            setShowCreator(false);
-            resetForm();
-          }}
-          className="flex-1 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-xl font-semibold transition-colors"
-        >
-          Cancel
-        </button>
+      {/* Pricing Summary */}
+      {selectedItems.length > 0 && (
+        <div className="bg-gradient-to-r from-green-500/10 to-blue-500/10 border border-green-500/30 rounded-2xl p-6 backdrop-blur-xl">
+          <h3 className="text-xl font-semibold text-white mb-4">Pricing Summary</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-300">Individual Total:</span>
+              <span className="text-white font-semibold">${totalPrice.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-300">Discount ({discount}%):</span>
+              <span className="text-red-400 font-semibold">-${savings.toFixed(2)}</span>
+            </div>
+            <div className="border-t border-white/20 pt-3">
+              <div className="flex justify-between items-center">
+                <span className="text-white font-semibold text-lg">Bundle Price:</span>
+                <span className="text-green-400 font-bold text-2xl">${finalPrice.toFixed(2)}</span>
+              </div>
+              {savings > 0 && (
+                <p className="text-green-300 text-sm text-right">
+                  Save ${savings.toFixed(2)} ({Math.round((savings / totalPrice) * 100)}% off)
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Button */}
+      <div className="text-center">
         <button
           onClick={handleCreateBundle}
-          disabled={loading || !bundleName.trim() || selectedModules.length === 0}
-          className="flex-2 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-48"
+          disabled={createLoading || !name.trim() || selectedItems.length === 0}
+          className="px-8 py-4 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white rounded-xl font-bold text-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3 mx-auto"
         >
-          {loading ? (
+          {createLoading ? (
             <>
-              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
               Creating Bundle...
             </>
           ) : (
             <>
-              <ShoppingBagIcon className="w-5 h-5" />
+              <PlusIcon className="w-6 h-6" />
               Create Bundle
             </>
           )}
         </button>
       </div>
-
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(59, 130, 246, 0.5);
-          border-radius: 3px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(59, 130, 246, 0.7);
-        }
-      `}</style>
     </div>
   );
 }
