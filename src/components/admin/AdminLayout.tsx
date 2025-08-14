@@ -16,7 +16,8 @@ import {
   Bars3Icon,
   XMarkIcon,
   ShoppingBagIcon,
-  RectangleStackIcon
+  RectangleStackIcon,
+  TagIcon
 } from '@heroicons/react/24/outline';
 
 interface AdminLayoutProps {
@@ -40,6 +41,7 @@ const navigation = [
   { name: 'Bundles', href: '/admin/bundles', icon: ShoppingBagIcon },
   { name: 'Notes & PDFs', href: '/admin/notes', icon: DocumentIcon },
   { name: 'Videos', href: '/admin/video-test', icon: VideoCameraIcon },
+  { name: 'Discounts', href: '/admin/discounts', icon: TagIcon },
 ];
 
 export default function AdminLayout({ children }: AdminLayoutProps) {

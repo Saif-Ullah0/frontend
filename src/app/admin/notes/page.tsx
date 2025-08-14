@@ -1,3 +1,5 @@
+//frontend/src/app/admin/notes/page.tsx
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -135,18 +137,33 @@ export default function AdminNotesPage() {
   };
 
   const fetchCourses = async () => {
-    try {
-      const response = await fetch('http://localhost:5000/api/admin/courses', {
+  try {
+    let response = await fetch('http://localhost:5000/api/admin/courses', {
+      credentials: 'include',
+    });
+
+    // Fallback to regular endpoint if admin endpoint fails
+    if (!response.ok && response.status === 404) {
+      console.log('🔄 Admin endpoint not found, trying regular endpoint...');
+      response = await fetch('http://localhost:5000/api/courses', {
         credentials: 'include',
       });
-      if (response.ok) {
-        const data = await response.json();
-        setCourses(data);
-      }
-    } catch (err) {
-      console.error('Error fetching courses:', err);
     }
-  };
+
+    if (response.ok) {
+      const data = await response.json();
+      // Ensure courses is always an array
+      const coursesArray = data.courses || data || [];
+      setCourses(Array.isArray(coursesArray) ? coursesArray : []);
+    } else {
+      console.error('Failed to load courses:', response.status);
+      setCourses([]); // Set empty array on failure
+    }
+  } catch (err) {
+    console.error('Error fetching courses:', err);
+    setCourses([]); // Set empty array on error
+  }
+};
 
   const loadModules = async (courseId: number) => {
     try {
@@ -400,11 +417,15 @@ export default function AdminNotesPage() {
                   style={{ backgroundColor: '#1f2937', color: '#ffffff' }}
                 >
                   <option value="ALL" style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>All Courses</option>
-                  {courses.map(course => (
-                    <option key={course.id} value={course.id} style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
-                      {course.title}
-                    </option>
-                  ))}
+                  {Array.isArray(courses) ? (
+                    courses.map(course => (
+                      <option key={course.id} value={course.id} style={{ backgroundColor: '#1f2937', color: '#ffffff' }}>
+                        {course.title}
+                      </option>
+                    ))
+                  ) : (
+                    <option disabled>No courses available</option>
+                  )}
                 </select>
               </div>
 
