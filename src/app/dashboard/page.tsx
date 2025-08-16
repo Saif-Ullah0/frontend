@@ -16,7 +16,19 @@ import {
   Users,
   Zap,
   CheckCircle2,
-  ArrowRight
+  ArrowRight,
+  ShoppingBag,
+  Settings,
+  PackageOpen,
+  Crown,
+  Star,
+  DollarSign,
+  BarChart3,
+  ShoppingCart,
+  GraduationCap,
+  Bookmark,
+  Gift,
+  Sparkles
 } from 'lucide-react';
 
 type Course = {
@@ -183,6 +195,8 @@ export default function DashboardPage() {
     ));
   };
 
+  const isAdmin = user?.role === 'ADMIN';
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] text-white">
@@ -226,14 +240,33 @@ export default function DashboardPage() {
                 {getGreeting()}, {user.name}! 👋
               </h1>
               <p className="text-gray-400 mt-2 text-lg">Ready to continue your learning journey?</p>
+              {isAdmin && (
+                <div className="flex items-center gap-2 mt-2">
+                  <Crown className="w-5 h-5 text-yellow-400" />
+                  <span className="text-yellow-400 font-semibold">Administrator</span>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3">
+              {/* Profile Button */}
               <button
                 onClick={() => router.push('/profile')}
                 className="p-3 bg-white/10 border border-white/20 rounded-xl hover:bg-white/20 transition-all duration-300"
+                title="Profile"
               >
                 <Users className="w-5 h-5" />
               </button>
+              
+              {/* Admin Panel Button */}
+              {isAdmin && (
+                <button
+                  onClick={() => router.push('/admin')}
+                  className="p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-xl hover:bg-yellow-500/30 transition-all duration-300"
+                  title="Admin Panel"
+                >
+                  <Crown className="w-5 h-5 text-yellow-400" />
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -351,7 +384,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Weekly Goals - Now Functional */}
+            {/* Weekly Goals */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
               <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-6">
                 <Target className="w-6 h-6 text-red-400" />
@@ -408,17 +441,19 @@ export default function DashboardPage() {
               </h3>
               
               <div className="space-y-3">
+                {/* Browse Courses */}
                 <button
                   onClick={() => router.push('/categories')}
                   className="w-full p-3 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 rounded-xl text-left hover:from-blue-500/30 hover:to-purple-500/30 transition-all duration-300 group"
                 >
                   <div className="flex items-center gap-3">
-                    <Plus className="w-5 h-5 text-blue-400" />
+                    <GraduationCap className="w-5 h-5 text-blue-400" />
                     <span className="text-white group-hover:text-blue-300">Browse Courses</span>
                     <ArrowRight className="w-4 h-4 text-gray-400 ml-auto group-hover:translate-x-1 transition-transform" />
                   </div>
                 </button>
                 
+                {/* My Courses */}
                 <button
                   onClick={() => router.push('/my-courses')}
                   className="w-full p-3 bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 rounded-xl text-left hover:from-green-500/30 hover:to-emerald-500/30 transition-all duration-300 group"
@@ -430,20 +465,127 @@ export default function DashboardPage() {
                   </div>
                 </button>
                 
+                {/* Bundle Marketplace */}
                 <button
-                  onClick={() => router.push('/profile')}
+                  onClick={() => router.push('/shop/bundles')}
                   className="w-full p-3 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 rounded-xl text-left hover:from-purple-500/30 hover:to-pink-500/30 transition-all duration-300 group"
                 >
                   <div className="flex items-center gap-3">
-                    <Users className="w-5 h-5 text-purple-400" />
-                    <span className="text-white group-hover:text-purple-300">Profile</span>
+                    <ShoppingBag className="w-5 h-5 text-purple-400" />
+                    <span className="text-white group-hover:text-purple-300">Bundle Store</span>
+                    <ArrowRight className="w-4 h-4 text-gray-400 ml-auto group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </button>
+
+                {/* Bundle Studio */}
+                <button
+                  onClick={() => router.push('/bundles')}
+                  className="w-full p-3 bg-gradient-to-r from-orange-500/20 to-red-500/20 border border-orange-500/30 rounded-xl text-left hover:from-orange-500/30 hover:to-red-500/30 transition-all duration-300 group"
+                >
+                  <div className="flex items-center gap-3">
+                    <PackageOpen className="w-5 h-5 text-orange-400" />
+                    <span className="text-white group-hover:text-orange-300">Bundle Studio</span>
                     <ArrowRight className="w-4 h-4 text-gray-400 ml-auto group-hover:translate-x-1 transition-transform" />
                   </div>
                 </button>
               </div>
             </div>
 
-            {/* Learning Calendar - Now Functional */}
+            {/* Admin Actions (if admin) */}
+            {isAdmin && (
+              <div className="bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/30 rounded-2xl p-6 backdrop-blur-xl">
+                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                  <Crown className="w-5 h-5 text-yellow-400" />
+                  Admin Panel
+                </h3>
+                
+                <div className="space-y-3">
+                  {/* Admin Dashboard */}
+                  <button
+                    onClick={() => router.push('/admin')}
+                    className="w-full p-3 bg-yellow-500/20 border border-yellow-500/30 rounded-xl text-left hover:bg-yellow-500/30 transition-all duration-300 group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <BarChart3 className="w-5 h-5 text-yellow-400" />
+                      <span className="text-white group-hover:text-yellow-300">Dashboard</span>
+                      <ArrowRight className="w-4 h-4 text-gray-400 ml-auto group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </button>
+
+                  {/* Bundle Management */}
+                  <button
+                    onClick={() => router.push('/admin/bundles')}
+                    className="w-full p-3 bg-orange-500/20 border border-orange-500/30 rounded-xl text-left hover:bg-orange-500/30 transition-all duration-300 group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Gift className="w-5 h-5 text-orange-400" />
+                      <span className="text-white group-hover:text-orange-300">Bundle Management</span>
+                      <ArrowRight className="w-4 h-4 text-gray-400 ml-auto group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </button>
+
+                  {/* Course Management */}
+                  <button
+                    onClick={() => router.push('/admin/courses')}
+                    className="w-full p-3 bg-blue-500/20 border border-blue-500/30 rounded-xl text-left hover:bg-blue-500/30 transition-all duration-300 group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Settings className="w-5 h-5 text-blue-400" />
+                      <span className="text-white group-hover:text-blue-300">Course Management</span>
+                      <ArrowRight className="w-4 h-4 text-gray-400 ml-auto group-hover:translate-x-1 transition-transform" />
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Profile & Settings */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+              <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+                <Users className="w-5 h-5 text-blue-400" />
+                Account
+              </h3>
+              
+              <div className="space-y-3">
+                {/* Profile */}
+                <button
+                  onClick={() => router.push('/profile')}
+                  className="w-full p-3 bg-blue-500/20 border border-blue-500/30 rounded-xl text-left hover:bg-blue-500/30 transition-all duration-300 group"
+                >
+                  <div className="flex items-center gap-3">
+                    <Users className="w-5 h-5 text-blue-400" />
+                    <span className="text-white group-hover:text-blue-300">Profile</span>
+                    <ArrowRight className="w-4 h-4 text-gray-400 ml-auto group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </button>
+
+                {/* Purchases */}
+                <button
+                  onClick={() => router.push('/my-purchases')}
+                  className="w-full p-3 bg-green-500/20 border border-green-500/30 rounded-xl text-left hover:bg-green-500/30 transition-all duration-300 group"
+                >
+                  <div className="flex items-center gap-3">
+                    <ShoppingCart className="w-5 h-5 text-green-400" />
+                    <span className="text-white group-hover:text-green-300">My Purchases</span>
+                    <ArrowRight className="w-4 h-4 text-gray-400 ml-auto group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </button>
+
+                {/* Bookmarks */}
+                <button
+                  onClick={() => router.push('/bookmarks')}
+                  className="w-full p-3 bg-purple-500/20 border border-purple-500/30 rounded-xl text-left hover:bg-purple-500/30 transition-all duration-300 group"
+                >
+                  <div className="flex items-center gap-3">
+                    <Bookmark className="w-5 h-5 text-purple-400" />
+                    <span className="text-white group-hover:text-purple-300">Saved Items</span>
+                    <ArrowRight className="w-4 h-4 text-gray-400 ml-auto group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            {/* Learning Calendar */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
               <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-blue-400" />
