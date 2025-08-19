@@ -168,12 +168,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
         <div className="flex-1 flex flex-col min-h-0 bg-gray-800 backdrop-blur-lg bg-opacity-80">
           <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
-            <div className="flex items-center flex-shrink-0 px-4">
+            {/* <div className="flex items-center flex-shrink-0 px-4">
               <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center mr-3">
                 <AcademicCapIcon className="w-5 h-5 text-white" />
               </div>
               <h1 className="text-xl font-bold text-white">EduAdmin</h1>
-            </div>
+            </div> */}
             <nav className="mt-5 flex-1 px-2 space-y-1">
               {navigation.map((item) => (
                 <Link
