@@ -1,34 +1,38 @@
-// src/components/checkout/DiscountValidator.tsx
 "use client";
 
 import { useState } from 'react';
-import { 
-  TagIcon,
-  CheckCircleIcon,
-  XCircleIcon,
-  ExclamationTriangleIcon
-} from '@heroicons/react/24/outline';
+import { TagIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DiscountInfo {
-  id: number;
   code: string;
-  type: 'PERCENTAGE' | 'FIXED';
-  value: number;
-  minOrderAmount?: number;
-  maxDiscount?: number;
   discountAmount: number;
   finalAmount: number;
+  discountCode: {
+    id: number;
+    code: string;
+    name?: string;
+    description?: string;
+    type: 'PERCENTAGE' | 'FIXED';
+    value: number;
+    applicableToType: 'COURSE' | 'CATEGORY' | 'ALL';
+    applicableToName?: string;
+  };
 }
 
 interface DiscountValidatorProps {
   originalAmount: number;
+  itemId: number;
+  itemType: string;
   onDiscountApplied: (discountInfo: DiscountInfo | null) => void;
   className?: string;
 }
 
 export default function DiscountValidator({ 
   originalAmount, 
+  itemId,
+  itemType,
   onDiscountApplied, 
   className = "" 
 }: DiscountValidatorProps) {
@@ -36,69 +40,61 @@ export default function DiscountValidator({
   const [discountInfo, setDiscountInfo] = useState<DiscountInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
 
   const validateDiscount = async () => {
+    if (!user?.token) {
+      setError('Please log in to apply discounts');
+      toast.error('Please log in to apply discounts');
+      return;
+    }
     if (!discountCode.trim()) {
       setError('Please enter a discount code');
       return;
     }
-
     setLoading(true);
     setError(null);
-
     try {
       const response = await fetch('http://localhost:5000/api/discounts/validate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`,
         },
         credentials: 'include',
         body: JSON.stringify({
           code: discountCode.toUpperCase(),
-          orderAmount: originalAmount
+          purchaseAmount: originalAmount,
+          itemType,
+          itemId,
         }),
       });
-
       const data = await response.json();
-
+      if (response.status === 401) {
+        setError('Session expired. Please log in again.');
+        toast.error('Session expired. Please log in again.');
+        window.location.href = '/login?redirect=/checkout';
+        return;
+      }
       if (!response.ok) {
-        throw new Error(data.error || 'Invalid discount code');
+        throw new Error(data.message || 'Invalid discount code');
       }
-
-      // Calculate discount amount
-      let discountAmount = 0;
-      if (data.discount.type === 'PERCENTAGE') {
-        discountAmount = (originalAmount * data.discount.value) / 100;
-        if (data.discount.maxDiscount) {
-          discountAmount = Math.min(discountAmount, data.discount.maxDiscount);
-        }
-      } else {
-        discountAmount = data.discount.value;
-      }
-
-      const finalAmount = Math.max(0, originalAmount - discountAmount);
-
       const discountData: DiscountInfo = {
-        id: data.discount.id,
-        code: data.discount.code,
-        type: data.discount.type,
-        value: data.discount.value,
-        minOrderAmount: data.discount.minOrderAmount,
-        maxDiscount: data.discount.maxDiscount,
-        discountAmount,
-        finalAmount
+        code: discountCode.toUpperCase(),
+        discountAmount: data.data.calculation.discountAmount,
+        finalAmount: data.data.calculation.finalAmount,
+        discountCode: data.data.discountCode,
       };
-
       setDiscountInfo(discountData);
       onDiscountApplied(discountData);
-      toast.success(`Discount applied! You saved $${discountAmount.toFixed(2)}`);
-
+      toast.success(`Discount "${discountData.discountCode.name || discountData.code}" applied! You saved $${discountData.discountAmount.toFixed(2)}`);
     } catch (error) {
       console.error('Error validating discount:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to validate discount';
       setError(errorMessage);
       setDiscountInfo(null);
       onDiscountApplied(null);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -120,14 +116,13 @@ export default function DiscountValidator({
   };
 
   return (
-    <div className={`bg-white/5 border border-white/10 rounded-xl p-6 ${className}`}>
+    <div className={`bg-gray-800 border border-gray-700 rounded-xl p-6 ${className}`}>
       <div className="flex items-center gap-2 mb-4">
         <TagIcon className="w-5 h-5 text-blue-400" />
         <h3 className="font-semibold text-white">Discount Code</h3>
       </div>
 
       {!discountInfo ? (
-        /* Discount Input Form */
         <div className="space-y-4">
           <div className="flex gap-3">
             <div className="flex-1">
@@ -140,14 +135,14 @@ export default function DiscountValidator({
                 }}
                 onKeyPress={handleKeyPress}
                 placeholder="Enter discount code"
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 disabled={loading}
               />
             </div>
             <button
               onClick={validateDiscount}
-              disabled={loading || !discountCode.trim()}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              disabled={loading || !discountCode.trim() || !user?.token}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -156,33 +151,33 @@ export default function DiscountValidator({
               )}
             </button>
           </div>
-
           {error && (
             <div className="flex items-center gap-2 text-red-400 text-sm">
               <XCircleIcon className="w-4 h-4" />
               <span>{error}</span>
             </div>
           )}
-
           <div className="text-xs text-gray-400">
-            Have a promo code? Enter it above to get a discount on your purchase.
+            Enter a promo code to get a discount on your purchase.
           </div>
         </div>
       ) : (
-        /* Applied Discount Display */
         <div className="space-y-4">
           <div className="flex items-center justify-between p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
             <div className="flex items-center gap-3">
               <CheckCircleIcon className="w-5 h-5 text-green-400" />
               <div>
                 <div className="font-medium text-white">
-                  {discountInfo.code} Applied!
+                  {discountInfo.discountCode.name || discountInfo.code} Applied!
                 </div>
+                {discountInfo.discountCode.description && (
+                  <div className="text-sm text-gray-400">{discountInfo.discountCode.description}</div>
+                )}
                 <div className="text-sm text-green-400">
-                  {discountInfo.type === 'PERCENTAGE' 
-                    ? `${discountInfo.value}% discount`
-                    : `$${discountInfo.value} off`
-                  }
+                  Saved ${discountInfo.discountAmount.toFixed(2)}
+                </div>
+                <div className="text-xs text-gray-400">
+                  Applies to: {discountInfo.discountCode.applicableToName || discountInfo.discountCode.applicableToType.toLowerCase()}
                 </div>
               </div>
             </div>
@@ -193,8 +188,6 @@ export default function DiscountValidator({
               <XCircleIcon className="w-5 h-5" />
             </button>
           </div>
-
-          {/* Discount Breakdown */}
           <div className="space-y-2 text-sm">
             <div className="flex justify-between text-gray-300">
               <span>Original Amount:</span>
@@ -204,36 +197,14 @@ export default function DiscountValidator({
               <span>Discount ({discountInfo.code}):</span>
               <span>-${discountInfo.discountAmount.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-lg font-semibold text-white border-t border-white/10 pt-2">
+            <div className="flex justify-between text-lg font-semibold text-white border-t border-gray-700 pt-2">
               <span>Final Amount:</span>
               <span>${discountInfo.finalAmount.toFixed(2)}</span>
             </div>
           </div>
-
-          {/* Savings Highlight */}
-          <div className="text-center p-3 bg-gradient-to-r from-green-500/10 to-blue-500/10 border border-green-500/20 rounded-lg">
-            <div className="text-green-400 font-semibold">
-              🎉 You saved ${discountInfo.discountAmount.toFixed(2)}!
-            </div>
+          <div className="text-center text-sm text-green-400">
+            🎉 You saved ${discountInfo.discountAmount.toFixed(2)}!
           </div>
-
-          {/* Discount Limitations */}
-          {(discountInfo.minOrderAmount || discountInfo.maxDiscount) && (
-            <div className="text-xs text-gray-400 space-y-1">
-              {discountInfo.minOrderAmount && (
-                <div className="flex items-center gap-1">
-                  <ExclamationTriangleIcon className="w-3 h-3" />
-                  <span>Minimum order: ${discountInfo.minOrderAmount}</span>
-                </div>
-              )}
-              {discountInfo.maxDiscount && discountInfo.type === 'PERCENTAGE' && (
-                <div className="flex items-center gap-1">
-                  <ExclamationTriangleIcon className="w-3 h-3" />
-                  <span>Maximum discount: ${discountInfo.maxDiscount}</span>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
     </div>

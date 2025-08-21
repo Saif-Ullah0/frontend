@@ -1,4 +1,5 @@
-// src/app/checkout/page.tsx
+//frontend/src/app/checkout/page.tsx
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -10,7 +11,6 @@ import {
   CheckCircleIcon,
   ClockIcon,
   BookOpenIcon,
-  TagIcon,
   CurrencyDollarIcon
 } from '@heroicons/react/24/outline';
 import DiscountValidator from '@/components/checkout/DiscountValidator';
@@ -30,12 +30,7 @@ interface Course {
 }
 
 interface DiscountInfo {
-  id: number;
   code: string;
-  type: 'PERCENTAGE' | 'FIXED';
-  value: number;
-  minOrderAmount?: number;
-  maxDiscount?: number;
   discountAmount: number;
   finalAmount: number;
 }
@@ -53,7 +48,7 @@ export default function CheckoutPage() {
   const courseId = searchParams.get('courseId');
 
   useEffect(() => {
-    if (!user) {
+    if (!user?.token) {
       router.push('/login?redirect=/checkout');
       return;
     }
@@ -70,15 +65,18 @@ export default function CheckoutPage() {
     try {
       setLoading(true);
       const response = await fetch(`http://localhost:5000/api/courses/${courseId}`, {
+        headers: {
+          'Authorization': `Bearer ${user?.token}`,
+        },
         credentials: 'include',
       });
 
       if (!response.ok) {
-        throw new Error('Course not found');
+        throw new Error('Course not found or unavailable');
       }
 
       const data = await response.json();
-      setCourse(data.course || data);
+      setCourse(data);
     } catch (err) {
       console.error('Error fetching course:', err);
       setError('Failed to load course details');
@@ -93,66 +91,36 @@ export default function CheckoutPage() {
 
   const calculateTotal = () => {
     if (!course) return 0;
-    if (appliedDiscount) {
-      return appliedDiscount.finalAmount;
-    }
-    return course.price;
+    return appliedDiscount ? appliedDiscount.finalAmount : course.price;
   };
 
   const handleCheckout = async () => {
-    if (!course || !user) return;
+    if (!course || !user?.token) return;
 
     setProcessing(true);
 
     try {
-      // Prepare checkout data
-      const checkoutData = {
-        courseId: course.id,
-        amount: course.price,
-        discountCode: appliedDiscount?.code,
-        finalAmount: calculateTotal()
-      };
-
-      // Apply discount if one is selected
-      if (appliedDiscount) {
-        const applyResponse = await fetch('http://localhost:5000/api/discounts/apply', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            code: appliedDiscount.code,
-            orderAmount: course.price
-          }),
-        });
-
-        if (!applyResponse.ok) {
-          throw new Error('Discount code is no longer valid');
-        }
-      }
-
-      // Process enrollment (in a real app, this would integrate with a payment processor)
-      const enrollResponse = await fetch('http://localhost:5000/api/enroll', {
+      const response = await fetch('http://localhost:5000/api/courses/purchase', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`,
         },
         credentials: 'include',
         body: JSON.stringify({
           courseId: course.id,
-          discountCode: appliedDiscount?.code
+          discountCode: appliedDiscount?.code,
         }),
       });
 
-      if (!enrollResponse.ok) {
-        const errorData = await enrollResponse.json();
-        throw new Error(errorData.error || 'Enrollment failed');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Enrollment failed');
       }
 
       toast.success('🎉 Successfully enrolled in course!');
       router.push(`/courses/${course.id}/modules?enrolled=true`);
-
     } catch (error) {
       console.error('Checkout error:', error);
       toast.error(error instanceof Error ? error.message : 'Checkout failed');
@@ -190,7 +158,6 @@ export default function CheckoutPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] text-white">
-      {/* Header */}
       <div className="border-b border-white/10 bg-white/5 backdrop-blur-sm">
         <div className="max-w-4xl mx-auto px-6 py-4">
           <div className="flex items-center gap-4">
@@ -200,7 +167,6 @@ export default function CheckoutPage() {
             >
               <ArrowLeftIcon className="w-5 h-5" />
             </button>
-            
             <div className="flex items-center gap-3">
               <div className="p-2 bg-green-500/20 rounded-lg">
                 <CreditCardIcon className="w-5 h-5 text-green-400" />
@@ -216,28 +182,21 @@ export default function CheckoutPage() {
 
       <div className="max-w-4xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Course Details */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Course Summary */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
               <div className="flex items-center gap-3 mb-4">
                 <ShoppingCartIcon className="w-6 h-6 text-blue-400" />
                 <h2 className="text-xl font-semibold">Course Summary</h2>
               </div>
-
               <div className="flex gap-4">
                 <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl flex items-center justify-center">
                   <BookOpenIcon className="w-8 h-8 text-white" />
                 </div>
-                
                 <div className="flex-1">
                   <h3 className="text-lg font-semibold text-white mb-2">{course.title}</h3>
                   <p className="text-gray-300 text-sm mb-3 line-clamp-2">{course.description}</p>
-                  
                   <div className="flex items-center gap-4 text-sm text-gray-400">
-                    {course.category && (
-                      <span>{course.category.name}</span>
-                    )}
+                    {course.category && <span>{course.category.name}</span>}
                     {course.duration && (
                       <>
                         <span>•</span>
@@ -255,15 +214,12 @@ export default function CheckoutPage() {
                     )}
                   </div>
                 </div>
-                
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-white">${course.price}</div>
+                  <div className="text-2xl font-bold text-white">${course.price.toFixed(2)}</div>
                   <div className="text-sm text-gray-400">One-time payment</div>
                 </div>
               </div>
             </div>
-
-            {/* What You'll Get */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
               <h3 className="text-lg font-semibold mb-4">What you'll get:</h3>
               <div className="space-y-3">
@@ -273,71 +229,58 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <CheckCircleIcon className="w-5 h-5 text-green-400" />
-                  <span className="text-gray-300">Downloadable resources and materials</span>
+                  <span className="text-gray-300">Downloadable resources</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <CheckCircleIcon className="w-5 h-5 text-green-400" />
-                  <span className="text-gray-300">Access to course community</span>
+                  <span className="text-gray-300">Course community access</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <CheckCircleIcon className="w-5 h-5 text-green-400" />
                   <span className="text-gray-300">Certificate of completion</span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <CheckCircleIcon className="w-5 h-5 text-green-400" />
-                  <span className="text-gray-300">30-day money-back guarantee</span>
-                </div>
               </div>
             </div>
           </div>
-
-          {/* Checkout Sidebar */}
           <div className="space-y-6">
-            {/* Discount Code */}
             <DiscountValidator
               originalAmount={course.price}
+              itemId={course.id}
+              itemType="COURSE"
               onDiscountApplied={handleDiscountApplied}
             />
-
-            {/* Order Summary */}
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <CurrencyDollarIcon className="w-5 h-5 text-green-400" />
                 Order Summary
               </h3>
-
               <div className="space-y-3">
                 <div className="flex justify-between text-gray-300">
                   <span>Course Price:</span>
                   <span>${course.price.toFixed(2)}</span>
                 </div>
-
                 {appliedDiscount && (
                   <div className="flex justify-between text-green-400">
                     <span>Discount ({appliedDiscount.code}):</span>
                     <span>-${appliedDiscount.discountAmount.toFixed(2)}</span>
                   </div>
                 )}
-
                 <div className="border-t border-white/10 pt-3">
                   <div className="flex justify-between text-xl font-bold text-white">
                     <span>Total:</span>
                     <span>${calculateTotal().toFixed(2)}</span>
                   </div>
                 </div>
-
                 {appliedDiscount && (
                   <div className="text-center text-sm text-green-400">
-                    You saved ${appliedDiscount.discountAmount.toFixed(2)}! 🎉
+                    You saved ${appliedDiscount.discountAmount.toFixed(2)}!
                   </div>
                 )}
               </div>
             </div>
-
-            {/* Checkout Button */}
             <button
               onClick={handleCheckout}
-              disabled={processing}
+              disabled={processing || !user?.token}
               className="w-full py-4 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white rounded-2xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
             >
               {processing ? (
@@ -352,14 +295,12 @@ export default function CheckoutPage() {
                 </>
               )}
             </button>
-
-            {/* Security Notice */}
             <div className="text-xs text-gray-400 text-center">
               <div className="flex items-center justify-center gap-1 mb-1">
                 <CheckCircleIcon className="w-3 h-3" />
                 <span>Secure checkout</span>
               </div>
-              <p>Your payment information is encrypted and secure</p>
+              <p>Your payment is encrypted and secure</p>
             </div>
           </div>
         </div>
