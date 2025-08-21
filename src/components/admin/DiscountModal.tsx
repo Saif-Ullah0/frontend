@@ -1,69 +1,102 @@
-// src/components/admin/DiscountModal.tsx
-"use client";
+'use client';
 
 import { useState, useEffect } from 'react';
-import { 
-  XMarkIcon,
-  TagIcon,
-  PercentBadgeIcon,
-  CurrencyDollarIcon,
-  CalendarIcon,
-  CheckIcon
-} from '@heroicons/react/24/outline';
+import { XMarkIcon, TagIcon, CheckIcon, CalendarIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
+
+interface Course {
+  id: number;
+  title: string;
+  categoryId: number;
+}
 
 interface Discount {
-  id: number;
+  id?: number;
   code: string;
+  name?: string;
   description?: string;
   type: 'PERCENTAGE' | 'FIXED';
   value: number;
-  minOrderAmount?: number;
-  maxDiscount?: number;
-  usageLimit?: number;
-  usedCount: number;
-  isActive: boolean;
+  maxUses?: number;
+  maxUsesPerUser?: number;
   startsAt?: string;
   expiresAt?: string;
+  minPurchaseAmount?: number;
+  maxDiscountAmount?: number;
+  isActive: boolean;
+  isPublic: boolean;
+  applicableToType: 'COURSE' | 'CATEGORY' | 'ALL';
+  applicableToId?: number;
 }
 
 interface DiscountModalProps {
   discount?: Discount | null;
+  categories: Record<number, string>;
+  courses: Course[];
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export default function DiscountModal({ discount, onClose, onSuccess }: DiscountModalProps) {
-  const [formData, setFormData] = useState({
+export default function DiscountModal({ discount, categories, courses, onClose, onSuccess }: DiscountModalProps) {
+  const [formData, setFormData] = useState<Discount>({
     code: '',
+    name: '',
     description: '',
-    type: 'PERCENTAGE' as 'PERCENTAGE' | 'FIXED',
+    type: 'PERCENTAGE',
     value: 0,
-    minOrderAmount: '',
-    maxDiscount: '',
-    usageLimit: '',
+    maxUses: undefined,
+    maxUsesPerUser: 1,
+    startsAt: undefined,
+    expiresAt: undefined,
+    minPurchaseAmount: undefined,
+    maxDiscountAmount: undefined,
     isActive: true,
-    startsAt: '',
-    expiresAt: ''
+    isPublic: false,
+    applicableToType: 'ALL',
+    applicableToId: undefined,
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-
+  const { user } = useAuth();
   const isEditing = !!discount;
 
   useEffect(() => {
     if (discount) {
       setFormData({
         code: discount.code,
+        name: discount.name || '',
         description: discount.description || '',
         type: discount.type,
         value: discount.value,
-        minOrderAmount: discount.minOrderAmount?.toString() || '',
-        maxDiscount: discount.maxDiscount?.toString() || '',
-        usageLimit: discount.usageLimit?.toString() || '',
+        maxUses: discount.maxUses,
+        maxUsesPerUser: discount.maxUsesPerUser || 1,
+        startsAt: discount.startsAt ? discount.startsAt.split('T')[0] : undefined,
+        expiresAt: discount.expiresAt ? discount.expiresAt.split('T')[0] : undefined,
+        minPurchaseAmount: discount.minPurchaseAmount,
+        maxDiscountAmount: discount.maxDiscountAmount,
         isActive: discount.isActive,
-        startsAt: discount.startsAt ? new Date(discount.startsAt).toISOString().slice(0, 16) : '',
-        expiresAt: discount.expiresAt ? new Date(discount.expiresAt).toISOString().slice(0, 16) : ''
+        isPublic: discount.isPublic,
+        applicableToType: discount.applicableToType || 'ALL',
+        applicableToId: discount.applicableToId,
+      });
+    } else {
+      setFormData({
+        code: '',
+        name: '',
+        description: '',
+        type: 'PERCENTAGE',
+        value: 0,
+        maxUses: undefined,
+        maxUsesPerUser: 1,
+        startsAt: undefined,
+        expiresAt: undefined,
+        minPurchaseAmount: undefined,
+        maxDiscountAmount: undefined,
+        isActive: true,
+        isPublic: false,
+        applicableToType: 'ALL',
+        applicableToId: undefined,
       });
     }
   }, [discount]);
@@ -75,33 +108,48 @@ export default function DiscountModal({ discount, onClose, onSuccess }: Discount
       newErrors.code = 'Discount code is required';
     } else if (formData.code.length < 3) {
       newErrors.code = 'Code must be at least 3 characters';
-    } else if (!/^[A-Z0-9_-]+$/i.test(formData.code)) {
-      newErrors.code = 'Code can only contain letters, numbers, underscores, and hyphens';
     }
 
     if (formData.value <= 0) {
       newErrors.value = 'Value must be greater than 0';
-    }
-
-    if (formData.type === 'PERCENTAGE' && formData.value > 100) {
+    } else if (formData.type === 'PERCENTAGE' && formData.value > 100) {
       newErrors.value = 'Percentage cannot exceed 100%';
     }
 
-    if (formData.minOrderAmount && parseFloat(formData.minOrderAmount) < 0) {
-      newErrors.minOrderAmount = 'Minimum order amount cannot be negative';
+    if (formData.applicableToType !== 'ALL' && !formData.applicableToId) {
+      newErrors.applicableToId = 'Please select a specific item';
     }
 
-    if (formData.maxDiscount && parseFloat(formData.maxDiscount) <= 0) {
-      newErrors.maxDiscount = 'Maximum discount must be greater than 0';
+    if (formData.minPurchaseAmount && formData.minPurchaseAmount < 0) {
+      newErrors.minPurchaseAmount = 'Minimum purchase amount cannot be negative';
     }
 
-    if (formData.usageLimit && parseInt(formData.usageLimit) <= 0) {
-      newErrors.usageLimit = 'Usage limit must be greater than 0';
+    if (formData.maxDiscountAmount && formData.maxDiscountAmount <= 0) {
+      newErrors.maxDiscountAmount = 'Maximum discount amount must be greater than 0';
+    }
+
+    if (formData.maxUses && formData.maxUses < 1) {
+      newErrors.maxUses = 'Maximum uses must be at least 1';
+    }
+
+    if (formData.maxUsesPerUser && formData.maxUsesPerUser < 1) {
+      newErrors.maxUsesPerUser = 'Maximum uses per user must be at least 1';
+    }
+
+    if (formData.expiresAt) {
+      const expiryDate = new Date(formData.expiresAt);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (expiryDate < today) {
+        newErrors.expiresAt = 'Expiry date cannot be in the past';
+      }
     }
 
     if (formData.startsAt && formData.expiresAt) {
-      if (new Date(formData.startsAt) >= new Date(formData.expiresAt)) {
-        newErrors.expiresAt = 'End date must be after start date';
+      const startDate = new Date(formData.startsAt);
+      const expiryDate = new Date(formData.expiresAt);
+      if (expiryDate < startDate) {
+        newErrors.expiresAt = 'Expiry date must be after start date';
       }
     }
 
@@ -111,54 +159,57 @@ export default function DiscountModal({ discount, onClose, onSuccess }: Discount
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    if (!user?.token) {
+      toast.error('Please log in to manage discounts');
+      return;
+    }
     if (!validateForm()) {
       return;
     }
-
     setLoading(true);
-
     try {
       const payload = {
         code: formData.code.toUpperCase(),
-        description: formData.description || undefined,
+        name: formData.name || null,
+        description: formData.description || null,
         type: formData.type,
-        value: formData.value,
-        minOrderAmount: formData.minOrderAmount ? parseFloat(formData.minOrderAmount) : undefined,
-        maxDiscount: formData.maxDiscount ? parseFloat(formData.maxDiscount) : undefined,
-        usageLimit: formData.usageLimit ? parseInt(formData.usageLimit) : undefined,
+        value: Number(formData.value),
+        maxUses: formData.maxUses ? Number(formData.maxUses) : null,
+        maxUsesPerUser: formData.maxUsesPerUser ? Number(formData.maxUsesPerUser) : null,
+        startsAt: formData.startsAt ? new Date(formData.startsAt).toISOString() : null,
+        expiresAt: formData.expiresAt ? new Date(formData.expiresAt).toISOString() : null,
+        minPurchaseAmount: formData.minPurchaseAmount ? Number(formData.minPurchaseAmount) : null,
+        maxDiscountAmount: formData.maxDiscountAmount ? Number(formData.maxDiscountAmount) : null,
         isActive: formData.isActive,
-        startsAt: formData.startsAt ? new Date(formData.startsAt).toISOString() : undefined,
-        expiresAt: formData.expiresAt ? new Date(formData.expiresAt).toISOString() : undefined
+        isPublic: formData.isPublic,
+        applicableToType: formData.applicableToType,
+        applicableToId: formData.applicableToType === 'ALL' ? null : Number(formData.applicableToId),
       };
-
-      const url = isEditing 
-        ? `http://localhost:5000/api/discounts/${discount.id}`
-        : 'http://localhost:5000/api/discounts';
-      
-      const method = isEditing ? 'PUT' : 'POST';
-
+      const url = isEditing ? `${process.env.NEXT_PUBLIC_API_URL}/api/discounts/${discount?.id}` : `${process.env.NEXT_PUBLIC_API_URL}/api/discounts`;
       const response = await fetch(url, {
-        method,
+        method: isEditing ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`,
         },
         credentials: 'include',
         body: JSON.stringify(payload),
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || `Failed to ${isEditing ? 'update' : 'create'} discount`);
+      if (response.status === 401) {
+        toast.error('Session expired. Please log in again.');
+        window.location.href = '/login?redirect=/admin/discounts';
+        return;
       }
-
+      if (!response.ok) {
+        throw new Error(data.message || `Failed to ${isEditing ? 'update' : 'create'} discount`);
+      }
       toast.success(`Discount ${isEditing ? 'updated' : 'created'} successfully!`);
       onSuccess();
-      
+      onClose();
     } catch (error) {
       console.error('Error saving discount:', error);
-      toast.error(error instanceof Error ? error.message : 'Something went wrong');
+      toast.error(error instanceof Error ? error.message : 'Failed to save discount');
     } finally {
       setLoading(false);
     }
@@ -171,83 +222,109 @@ export default function DiscountModal({ discount, onClose, onSuccess }: Discount
     }
   };
 
+  const getCategoryDisplayName = () => {
+    if (formData.applicableToType === 'ALL') {
+      return 'All Items';
+    } else if (formData.applicableToType === 'CATEGORY' && formData.applicableToId) {
+      return categories[formData.applicableToId] || 'Unknown Category';
+    } else if (formData.applicableToType === 'COURSE' && formData.applicableToId) {
+      const course = courses.find(c => c.id === formData.applicableToId);
+      return course ? `${course.title} (${categories[course.categoryId] || 'Unknown Category'})` : 'Unknown Course';
+    }
+    return '';
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+      <div className="bg-gray-900 border border-gray-700 rounded-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-500/20 rounded-lg">
               <TagIcon className="w-5 h-5 text-blue-400" />
             </div>
             <div>
               <h3 className="text-xl font-semibold text-white">
-                {isEditing ? 'Edit Discount' : 'Create New Discount'}
+                {isEditing ? 'Edit Discount' : 'Create Discount'}
               </h3>
               <p className="text-sm text-gray-400">
-                {isEditing ? 'Update discount code details' : 'Add a new discount code for your platform'}
+                {isEditing ? 'Update discount details' : 'Add a new discount code'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+            className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg"
+            disabled={loading}
           >
             <XMarkIcon className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           {/* Basic Information */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Code */}
+          <div className="space-y-4">
+            <h4 className="text-lg font-medium text-white border-b border-gray-700 pb-2">Basic Information</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Discount Code *
+                </label>
+                <input
+                  type="text"
+                  value={formData.code}
+                  onChange={(e) => handleInputChange('code', e.target.value.toUpperCase())}
+                  placeholder="SAVE10"
+                  className={`w-full px-4 py-2 bg-gray-800 border ${errors.code ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500`}
+                  disabled={loading}
+                />
+                {errors.code && <p className="mt-1 text-sm text-red-400">{errors.code}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Display Name
+                </label>
+                <input
+                  type="text"
+                  value={formData.name}
+                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  placeholder="e.g., Summer Sale"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                  disabled={loading}
+                />
+              </div>
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Discount Code *
+                Description
               </label>
-              <input
-                type="text"
-                value={formData.code}
-                onChange={(e) => handleInputChange('code', e.target.value.toUpperCase())}
-                placeholder="SAVE20"
-                className={`w-full px-4 py-3 bg-gray-800 border ${
-                  errors.code ? 'border-red-500' : 'border-gray-600'
-                } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all`}
+              <textarea
+                value={formData.description}
+                onChange={(e) => handleInputChange('description', e.target.value)}
+                placeholder="e.g., 10% off all programming courses"
+                className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                 disabled={loading}
+                rows={3}
               />
-              {errors.code && <p className="mt-1 text-sm text-red-400">{errors.code}</p>}
             </div>
-
-            {/* Type */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Discount Type *
-              </label>
-              <select
-                value={formData.type}
-                onChange={(e) => handleInputChange('type', e.target.value)}
-                className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                disabled={loading}
-              >
-                <option value="PERCENTAGE">Percentage</option>
-                <option value="FIXED">Fixed Amount</option>
-              </select>
-            </div>
-
-            {/* Value */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Discount Value * {formData.type === 'PERCENTAGE' ? '(%)' : '($)'}
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  {formData.type === 'PERCENTAGE' ? (
-                    <PercentBadgeIcon className="h-5 w-5 text-gray-400" />
-                  ) : (
-                    <CurrencyDollarIcon className="h-5 w-5 text-gray-400" />
-                  )}
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Discount Type *
+                </label>
+                <select
+                  value={formData.type}
+                  onChange={(e) => handleInputChange('type', e.target.value as 'PERCENTAGE' | 'FIXED')}
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  disabled={loading}
+                >
+                  <option value="PERCENTAGE">Percentage (%)</option>
+                  <option value="FIXED">Fixed Amount ($)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Discount Value * {formData.type === 'PERCENTAGE' ? '(%)' : '($)'}
+                </label>
                 <input
                   type="number"
                   min="0"
@@ -255,160 +332,226 @@ export default function DiscountModal({ discount, onClose, onSuccess }: Discount
                   step={formData.type === 'PERCENTAGE' ? 1 : 0.01}
                   value={formData.value}
                   onChange={(e) => handleInputChange('value', parseFloat(e.target.value) || 0)}
-                  className={`w-full pl-10 pr-4 py-3 bg-gray-800 border ${
-                    errors.value ? 'border-red-500' : 'border-gray-600'
-                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all`}
+                  className={`w-full px-4 py-2 bg-gray-800 border ${errors.value ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white focus:outline-none focus:border-blue-500`}
                   disabled={loading}
                 />
+                {errors.value && <p className="mt-1 text-sm text-red-400">{errors.value}</p>}
               </div>
-              {errors.value && <p className="mt-1 text-sm text-red-400">{errors.value}</p>}
             </div>
-
-            {/* Min Order Amount */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Minimum Order Amount ($)
-              </label>
+            <div className="flex items-center gap-3">
               <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={formData.minOrderAmount}
-                onChange={(e) => handleInputChange('minOrderAmount', e.target.value)}
-                placeholder="0.00"
-                className={`w-full px-4 py-3 bg-gray-800 border ${
-                  errors.minOrderAmount ? 'border-red-500' : 'border-gray-600'
-                } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all`}
+                type="checkbox"
+                id="isPublic"
+                checked={formData.isPublic}
+                onChange={(e) => handleInputChange('isPublic', e.target.checked)}
+                className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500"
                 disabled={loading}
               />
-              {errors.minOrderAmount && <p className="mt-1 text-sm text-red-400">{errors.minOrderAmount}</p>}
+              <label htmlFor="isPublic" className="text-sm font-medium text-gray-300">
+                Public (visible to all users)
+              </label>
             </div>
           </div>
 
-          {/* Advanced Settings */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Max Discount (for percentage) */}
-            {formData.type === 'PERCENTAGE' && (
+          {/* Application Rules */}
+          <div className="space-y-4">
+            <h4 className="text-lg font-medium text-white border-b border-gray-700 pb-2">Application Rules</h4>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Applies To *
+              </label>
+              <select
+                value={formData.applicableToType}
+                onChange={(e) => {
+                  handleInputChange('applicableToType', e.target.value as 'ALL' | 'CATEGORY' | 'COURSE');
+                  handleInputChange('applicableToId', undefined);
+                }}
+                className={`w-full px-4 py-2 bg-gray-800 border ${errors.applicableToType ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white focus:outline-none focus:border-blue-500`}
+                disabled={loading}
+              >
+                <option value="ALL">All Items</option>
+                <option value="CATEGORY">Specific Category</option>
+                <option value="COURSE">Specific Course</option>
+              </select>
+              {errors.applicableToType && <p className="mt-1 text-sm text-red-400">{errors.applicableToType}</p>}
+            </div>
+            {formData.applicableToType === 'CATEGORY' && (
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Select Category *
+                </label>
+                <select
+                  value={formData.applicableToId || ''}
+                  onChange={(e) => handleInputChange('applicableToId', parseInt(e.target.value) || undefined)}
+                  className={`w-full px-4 py-2 bg-gray-800 border ${errors.applicableToId ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white focus:outline-none focus:border-blue-500`}
+                  disabled={loading}
+                >
+                  <option value="">Select a category</option>
+                  {Object.entries(categories).map(([id, name]) => (
+                    <option key={id} value={id}>{name}</option>
+                  ))}
+                </select>
+                {errors.applicableToId && <p className="mt-1 text-sm text-red-400">{errors.applicableToId}</p>}
+              </div>
+            )}
+            {formData.applicableToType === 'COURSE' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Select Course *
+                </label>
+                <select
+                  value={formData.applicableToId || ''}
+                  onChange={(e) => handleInputChange('applicableToId', parseInt(e.target.value) || undefined)}
+                  className={`w-full px-4 py-2 bg-gray-800 border ${errors.applicableToId ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white focus:outline-none focus:border-blue-500`}
+                  disabled={loading}
+                >
+                  <option value="">Select a course</option>
+                  {courses.map(course => (
+                    <option key={course.id} value={course.id}>
+                      {course.title} ({categories[course.categoryId] || 'Unknown Category'})
+                    </option>
+                  ))}
+                </select>
+                {errors.applicableToId && <p className="mt-1 text-sm text-red-400">{errors.applicableToId}</p>}
+              </div>
+            )}
+            {getCategoryDisplayName() && (
+              <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <TagIcon className="w-4 h-4 text-blue-400" />
+                  <span className="text-sm font-semibold text-blue-400">DISCOUNT PREVIEW</span>
+                </div>
+                <p className="text-white font-medium">{getCategoryDisplayName()}</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  This discount will apply to: {formData.applicableToType.toLowerCase()}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Usage Limits & Expiry */}
+          <div className="space-y-4">
+            <h4 className="text-lg font-medium text-white border-b border-gray-700 pb-2">Usage Limits & Expiry</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <CurrencyDollarIcon className="w-4 h-4 inline mr-1" />
+                  Minimum Purchase Amount ($)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formData.minPurchaseAmount || ''}
+                  onChange={(e) => handleInputChange('minPurchaseAmount', parseFloat(e.target.value) || undefined)}
+                  placeholder="0.00"
+                  className={`w-full px-4 py-2 bg-gray-800 border ${errors.minPurchaseAmount ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500`}
+                  disabled={loading}
+                />
+                {errors.minPurchaseAmount && <p className="mt-1 text-sm text-red-400">{errors.minPurchaseAmount}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <CurrencyDollarIcon className="w-4 h-4 inline mr-1" />
                   Maximum Discount Amount ($)
                 </label>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
-                  value={formData.maxDiscount}
-                  onChange={(e) => handleInputChange('maxDiscount', e.target.value)}
-                  placeholder="No limit"
-                  className={`w-full px-4 py-3 bg-gray-800 border ${
-                    errors.maxDiscount ? 'border-red-500' : 'border-gray-600'
-                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all`}
+                  value={formData.maxDiscountAmount || ''}
+                  onChange={(e) => handleInputChange('maxDiscountAmount', parseFloat(e.target.value) || undefined)}
+                  placeholder="Unlimited"
+                  className={`w-full px-4 py-2 bg-gray-800 border ${errors.maxDiscountAmount ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500`}
                   disabled={loading}
                 />
-                {errors.maxDiscount && <p className="mt-1 text-sm text-red-400">{errors.maxDiscount}</p>}
+                {errors.maxDiscountAmount && <p className="mt-1 text-sm text-red-400">{errors.maxDiscountAmount}</p>}
               </div>
-            )}
-
-            {/* Usage Limit */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Usage Limit
-              </label>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Maximum Uses (Optional)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={formData.maxUses || ''}
+                  onChange={(e) => handleInputChange('maxUses', parseInt(e.target.value) || undefined)}
+                  placeholder="Unlimited"
+                  className={`w-full px-4 py-2 bg-gray-800 border ${errors.maxUses ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500`}
+                  disabled={loading}
+                />
+                {errors.maxUses && <p className="mt-1 text-sm text-red-400">{errors.maxUses}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Maximum Uses Per User (Optional)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={formData.maxUsesPerUser || ''}
+                  onChange={(e) => handleInputChange('maxUsesPerUser', parseInt(e.target.value) || undefined)}
+                  placeholder="1"
+                  className={`w-full px-4 py-2 bg-gray-800 border ${errors.maxUsesPerUser ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500`}
+                  disabled={loading}
+                />
+                {errors.maxUsesPerUser && <p className="mt-1 text-sm text-red-400">{errors.maxUsesPerUser}</p>}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <CalendarIcon className="w-4 h-4 inline mr-1" />
+                  Start Date (Optional)
+                </label>
+                <input
+                  type="date"
+                  value={formData.startsAt || ''}
+                  onChange={(e) => handleInputChange('startsAt', e.target.value || undefined)}
+                  placeholder="mm/dd/yyyy"
+                  className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  disabled={loading}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <CalendarIcon className="w-4 h-4 inline mr-1" />
+                  Expiry Date (Optional)
+                </label>
+                <input
+                  type="date"
+                  value={formData.expiresAt || ''}
+                  onChange={(e) => handleInputChange('expiresAt', e.target.value || undefined)}
+                  placeholder="mm/dd/yyyy"
+                  className={`w-full px-4 py-2 bg-gray-800 border ${errors.expiresAt ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white focus:outline-none focus:border-blue-500`}
+                  disabled={loading}
+                />
+                {errors.expiresAt && <p className="mt-1 text-sm text-red-400">{errors.expiresAt}</p>}
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
               <input
-                type="number"
-                min="1"
-                value={formData.usageLimit}
-                onChange={(e) => handleInputChange('usageLimit', e.target.value)}
-                placeholder="Unlimited"
-                className={`w-full px-4 py-3 bg-gray-800 border ${
-                  errors.usageLimit ? 'border-red-500' : 'border-gray-600'
-                } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all`}
+                type="checkbox"
+                id="isActive"
+                checked={formData.isActive}
+                onChange={(e) => handleInputChange('isActive', e.target.checked)}
+                className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500"
                 disabled={loading}
               />
-              {errors.usageLimit && <p className="mt-1 text-sm text-red-400">{errors.usageLimit}</p>}
-            </div>
-          </div>
-
-          {/* Date Range */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Start Date */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Start Date
+              <label htmlFor="isActive" className="text-sm font-medium text-gray-300">
+                Active (discount can be used immediately)
               </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <CalendarIcon className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="datetime-local"
-                  value={formData.startsAt}
-                  onChange={(e) => handleInputChange('startsAt', e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  disabled={loading}
-                />
-              </div>
-            </div>
-
-            {/* End Date */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                End Date
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <CalendarIcon className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="datetime-local"
-                  value={formData.expiresAt}
-                  onChange={(e) => handleInputChange('expiresAt', e.target.value)}
-                  className={`w-full pl-10 pr-4 py-3 bg-gray-800 border ${
-                    errors.expiresAt ? 'border-red-500' : 'border-gray-600'
-                  } rounded-lg text-white focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all`}
-                  disabled={loading}
-                />
-              </div>
-              {errors.expiresAt && <p className="mt-1 text-sm text-red-400">{errors.expiresAt}</p>}
             </div>
           </div>
 
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Description
-            </label>
-            <textarea
-              value={formData.description}
-              onChange={(e) => handleInputChange('description', e.target.value)}
-              placeholder="Optional description for this discount..."
-              rows={3}
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all resize-none"
-              disabled={loading}
-            />
-          </div>
-
-          {/* Active Status */}
-          <div className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="isActive"
-              checked={formData.isActive}
-              onChange={(e) => handleInputChange('isActive', e.target.checked)}
-              className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500 focus:ring-2"
-              disabled={loading}
-            />
-            <label htmlFor="isActive" className="text-sm font-medium text-gray-300">
-              Activate this discount immediately
-            </label>
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-4 pt-4 border-t border-gray-700">
+          {/* Action Buttons */}
+          <div className="flex gap-4 pt-6 border-t border-gray-700">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-semibold transition-colors"
+              className="flex-1 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-lg font-medium transition-colors"
               disabled={loading}
             >
               Cancel
@@ -416,13 +559,10 @@ export default function DiscountModal({ discount, onClose, onSuccess }: Discount
             <button
               type="submit"
               disabled={loading}
-              className="flex-2 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-48"
+              className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
             >
               {loading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  {isEditing ? 'Updating...' : 'Creating...'}
-                </>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
               ) : (
                 <>
                   <CheckIcon className="w-5 h-5" />
