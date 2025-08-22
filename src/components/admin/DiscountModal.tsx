@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { XMarkIcon, TagIcon, CheckIcon, CalendarIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,24 +15,24 @@ interface Course {
 interface Discount {
   id?: number;
   code: string;
-  name?: string;
-  description?: string;
+  name: string | null | undefined;
+  description: string | null | undefined;
   type: 'PERCENTAGE' | 'FIXED';
   value: number;
-  maxUses?: number;
-  maxUsesPerUser?: number;
-  startsAt?: string;
-  expiresAt?: string;
-  minPurchaseAmount?: number;
-  maxDiscountAmount?: number;
+  maxUses: number | null | undefined;
+  maxUsesPerUser: number | null | undefined;
+  startsAt: string | null | undefined;
+  expiresAt: string | null | undefined;
+  minPurchaseAmount: number | null | undefined;
+  maxDiscountAmount: number | null | undefined;
   isActive: boolean;
   isPublic: boolean;
   applicableToType: 'COURSE' | 'CATEGORY' | 'ALL';
-  applicableToId?: number;
+  applicableToId: number | null | undefined;
 }
 
 interface DiscountModalProps {
-  discount?: Discount | null;
+  discount: Discount | null | undefined;
   categories: Record<number, string>;
   courses: Course[];
   onClose: () => void;
@@ -41,62 +42,63 @@ interface DiscountModalProps {
 export default function DiscountModal({ discount, categories, courses, onClose, onSuccess }: DiscountModalProps) {
   const [formData, setFormData] = useState<Discount>({
     code: '',
-    name: '',
-    description: '',
+    name: null,
+    description: null,
     type: 'PERCENTAGE',
     value: 0,
-    maxUses: undefined,
+    maxUses: null,
     maxUsesPerUser: 1,
-    startsAt: undefined,
-    expiresAt: undefined,
-    minPurchaseAmount: undefined,
-    maxDiscountAmount: undefined,
+    startsAt: null,
+    expiresAt: null,
+    minPurchaseAmount: null,
+    maxDiscountAmount: null,
     isActive: true,
     isPublic: false,
     applicableToType: 'ALL',
-    applicableToId: undefined,
+    applicableToId: null,
   });
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { user } = useAuth();
+  const router = useRouter();
   const isEditing = !!discount;
 
   useEffect(() => {
     if (discount) {
       setFormData({
-        code: discount.code,
-        name: discount.name || '',
-        description: discount.description || '',
-        type: discount.type,
-        value: discount.value,
-        maxUses: discount.maxUses,
+        code: discount.code || '',
+        name: discount.name || null,
+        description: discount.description || null,
+        type: discount.type || 'PERCENTAGE',
+        value: discount.value || 0,
+        maxUses: discount.maxUses || null,
         maxUsesPerUser: discount.maxUsesPerUser || 1,
-        startsAt: discount.startsAt ? discount.startsAt.split('T')[0] : undefined,
-        expiresAt: discount.expiresAt ? discount.expiresAt.split('T')[0] : undefined,
-        minPurchaseAmount: discount.minPurchaseAmount,
-        maxDiscountAmount: discount.maxDiscountAmount,
-        isActive: discount.isActive,
-        isPublic: discount.isPublic,
+        startsAt: discount.startsAt ? discount.startsAt.split('T')[0] : null,
+        expiresAt: discount.expiresAt ? discount.expiresAt.split('T')[0] : null,
+        minPurchaseAmount: discount.minPurchaseAmount || null,
+        maxDiscountAmount: discount.maxDiscountAmount || null,
+        isActive: discount.isActive ?? true,
+        isPublic: discount.isPublic ?? false,
         applicableToType: discount.applicableToType || 'ALL',
-        applicableToId: discount.applicableToId,
+        applicableToId: discount.applicableToId || null,
       });
     } else {
       setFormData({
         code: '',
-        name: '',
-        description: '',
+        name: null,
+        description: null,
         type: 'PERCENTAGE',
         value: 0,
-        maxUses: undefined,
+        maxUses: null,
         maxUsesPerUser: 1,
-        startsAt: undefined,
-        expiresAt: undefined,
-        minPurchaseAmount: undefined,
-        maxDiscountAmount: undefined,
+        startsAt: null,
+        expiresAt: null,
+        minPurchaseAmount: null,
+        maxDiscountAmount: null,
         isActive: true,
         isPublic: false,
         applicableToType: 'ALL',
-        applicableToId: undefined,
+        applicableToId: null,
       });
     }
   }, [discount]);
@@ -159,8 +161,9 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.token) {
+    if (!user) {
       toast.error('Please log in to manage discounts');
+      router.push('/login?redirect=/admin/discounts');
       return;
     }
     if (!validateForm()) {
@@ -190,18 +193,17 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
         method: isEditing ? 'PUT' : 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.token}`,
         },
         credentials: 'include',
         body: JSON.stringify(payload),
       });
       const data = await response.json();
-      if (response.status === 401) {
-        toast.error('Session expired. Please log in again.');
-        window.location.href = '/login?redirect=/admin/discounts';
-        return;
-      }
       if (!response.ok) {
+        if (response.status === 401) {
+          toast.error('Session expired. Please log in again.');
+          router.push('/login?redirect=/admin/discounts');
+          return;
+        }
         throw new Error(data.message || `Failed to ${isEditing ? 'update' : 'create'} discount`);
       }
       toast.success(`Discount ${isEditing ? 'updated' : 'created'} successfully!`);
@@ -236,7 +238,7 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+      <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-500/20 rounded-lg">
@@ -253,7 +255,7 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg"
+            className="p-2 text-gray-400 hover:text-white hover:bg-gray-700/50 rounded-lg"
             disabled={loading}
           >
             <XMarkIcon className="w-5 h-5" />
@@ -285,8 +287,8 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
                 </label>
                 <input
                   type="text"
-                  value={formData.name}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
+                  value={formData.name || ''}
+                  onChange={(e) => handleInputChange('name', e.target.value || null)}
                   placeholder="e.g., Summer Sale"
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                   disabled={loading}
@@ -298,8 +300,8 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
                 Description
               </label>
               <textarea
-                value={formData.description}
-                onChange={(e) => handleInputChange('description', e.target.value)}
+                value={formData.description || ''}
+                onChange={(e) => handleInputChange('description', e.target.value || null)}
                 placeholder="e.g., 10% off all programming courses"
                 className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
                 disabled={loading}
@@ -364,7 +366,7 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
                 value={formData.applicableToType}
                 onChange={(e) => {
                   handleInputChange('applicableToType', e.target.value as 'ALL' | 'CATEGORY' | 'COURSE');
-                  handleInputChange('applicableToId', undefined);
+                  handleInputChange('applicableToId', null);
                 }}
                 className={`w-full px-4 py-2 bg-gray-800 border ${errors.applicableToType ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white focus:outline-none focus:border-blue-500`}
                 disabled={loading}
@@ -382,7 +384,7 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
                 </label>
                 <select
                   value={formData.applicableToId || ''}
-                  onChange={(e) => handleInputChange('applicableToId', parseInt(e.target.value) || undefined)}
+                  onChange={(e) => handleInputChange('applicableToId', parseInt(e.target.value) || null)}
                   className={`w-full px-4 py-2 bg-gray-800 border ${errors.applicableToId ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white focus:outline-none focus:border-blue-500`}
                   disabled={loading}
                 >
@@ -401,7 +403,7 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
                 </label>
                 <select
                   value={formData.applicableToId || ''}
-                  onChange={(e) => handleInputChange('applicableToId', parseInt(e.target.value) || undefined)}
+                  onChange={(e) => handleInputChange('applicableToId', parseInt(e.target.value) || null)}
                   className={`w-full px-4 py-2 bg-gray-800 border ${errors.applicableToId ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white focus:outline-none focus:border-blue-500`}
                   disabled={loading}
                 >
@@ -443,7 +445,7 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
                   min="0"
                   step="0.01"
                   value={formData.minPurchaseAmount || ''}
-                  onChange={(e) => handleInputChange('minPurchaseAmount', parseFloat(e.target.value) || undefined)}
+                  onChange={(e) => handleInputChange('minPurchaseAmount', parseFloat(e.target.value) || null)}
                   placeholder="0.00"
                   className={`w-full px-4 py-2 bg-gray-800 border ${errors.minPurchaseAmount ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500`}
                   disabled={loading}
@@ -460,7 +462,7 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
                   min="0"
                   step="0.01"
                   value={formData.maxDiscountAmount || ''}
-                  onChange={(e) => handleInputChange('maxDiscountAmount', parseFloat(e.target.value) || undefined)}
+                  onChange={(e) => handleInputChange('maxDiscountAmount', parseFloat(e.target.value) || null)}
                   placeholder="Unlimited"
                   className={`w-full px-4 py-2 bg-gray-800 border ${errors.maxDiscountAmount ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500`}
                   disabled={loading}
@@ -477,7 +479,7 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
                   type="number"
                   min="1"
                   value={formData.maxUses || ''}
-                  onChange={(e) => handleInputChange('maxUses', parseInt(e.target.value) || undefined)}
+                  onChange={(e) => handleInputChange('maxUses', parseInt(e.target.value) || null)}
                   placeholder="Unlimited"
                   className={`w-full px-4 py-2 bg-gray-800 border ${errors.maxUses ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500`}
                   disabled={loading}
@@ -492,7 +494,7 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
                   type="number"
                   min="1"
                   value={formData.maxUsesPerUser || ''}
-                  onChange={(e) => handleInputChange('maxUsesPerUser', parseInt(e.target.value) || undefined)}
+                  onChange={(e) => handleInputChange('maxUsesPerUser', parseInt(e.target.value) || null)}
                   placeholder="1"
                   className={`w-full px-4 py-2 bg-gray-800 border ${errors.maxUsesPerUser ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500`}
                   disabled={loading}
@@ -509,7 +511,7 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
                 <input
                   type="date"
                   value={formData.startsAt || ''}
-                  onChange={(e) => handleInputChange('startsAt', e.target.value || undefined)}
+                  onChange={(e) => handleInputChange('startsAt', e.target.value || null)}
                   placeholder="mm/dd/yyyy"
                   className="w-full px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
                   disabled={loading}
@@ -523,7 +525,7 @@ export default function DiscountModal({ discount, categories, courses, onClose, 
                 <input
                   type="date"
                   value={formData.expiresAt || ''}
-                  onChange={(e) => handleInputChange('expiresAt', e.target.value || undefined)}
+                  onChange={(e) => handleInputChange('expiresAt', e.target.value || null)}
                   placeholder="mm/dd/yyyy"
                   className={`w-full px-4 py-2 bg-gray-800 border ${errors.expiresAt ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white focus:outline-none focus:border-blue-500`}
                   disabled={loading}
