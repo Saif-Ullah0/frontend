@@ -23,22 +23,22 @@ import { useAuth } from '@/contexts/AuthContext';
 interface Discount {
   id: number;
   code: string;
-  name: string | null;
-  description: string | null;
+  name: string | null | undefined;
+  description: string | null | undefined;
   type: 'PERCENTAGE' | 'FIXED';
   value: number;
   usedCount: number;
-  maxUses: number | null;
-  maxUsesPerUser: number | null;
-  startsAt: string | null;
-  expiresAt: string | null;
-  minPurchaseAmount: number | null;
-  maxDiscountAmount: number | null;
+  maxUses: number | null | undefined;
+  maxUsesPerUser: number | null | undefined;
+  startsAt: string | null | undefined;
+  expiresAt: string | null | undefined;
+  minPurchaseAmount: number | null | undefined;
+  maxDiscountAmount: number | null | undefined;
   isActive: boolean;
   isPublic: boolean;
   applicableToType: 'ALL' | 'COURSE' | 'CATEGORY';
-  applicableToId: number | null;
-  applicableToName: string | null;
+  applicableToId: number | null | undefined;
+  applicableToName: string | null | undefined;
 }
 
 interface Category {
@@ -72,7 +72,7 @@ export default function AdminDiscountsPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
-  const [selectedDiscount, setSelectedDiscount] = useState<Discount | null>(null);
+  const [selectedDiscount, setSelectedDiscount] = useState<Discount | null | undefined>(null);
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
