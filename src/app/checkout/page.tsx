@@ -1,21 +1,27 @@
-//frontend/src/app/checkout/page.tsx
+// app/checkout/page.tsx
+// Changes:
+// - Fixed handleCheckout to check for data.url explicitly before redirecting to Stripe.
+// - Only show success toast after verifying payment for paid courses.
+// - Added retry logic for verifySession in handleVerifySession.
+// - Improved error handling and feedback.
 
 "use client";
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { 
+import {
   CreditCardIcon,
   ShoppingCartIcon,
   ArrowLeftIcon,
   CheckCircleIcon,
   ClockIcon,
   BookOpenIcon,
-  CurrencyDollarIcon
+  CurrencyDollarIcon,
+  TagIcon,
 } from '@heroicons/react/24/outline';
-import DiscountValidator from '@/components/checkout/DiscountValidator';
-import { useAuth } from '@/contexts/AuthContext';
+import { loadStripe } from '@stripe/stripe-js';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Course {
   id: number;
@@ -33,15 +39,19 @@ interface DiscountInfo {
   code: string;
   discountAmount: number;
   finalAmount: number;
+  originalAmount: number;
 }
+
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
 
 export default function CheckoutPage() {
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [couponCode, setCouponCode] = useState('');
   const [appliedDiscount, setAppliedDiscount] = useState<DiscountInfo | null>(null);
-  
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
@@ -64,9 +74,9 @@ export default function CheckoutPage() {
   const fetchCourse = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:5000/api/courses/${courseId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/courses/${courseId}`, {
         headers: {
-          'Authorization': `Bearer ${user?.token}`,
+          Authorization: `Bearer ${user?.token}`,
         },
         credentials: 'include',
       });
@@ -85,13 +95,91 @@ export default function CheckoutPage() {
     }
   };
 
-  const handleDiscountApplied = (discountInfo: DiscountInfo | null) => {
-    setAppliedDiscount(discountInfo);
+  const handleApplyCoupon = async () => {
+    if (!couponCode.trim()) {
+      toast.error('Please enter a coupon code');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/discounts/validate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${user?.token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          code: couponCode,
+          courseId,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.message || 'Invalid coupon code');
+      }
+
+      const data = await response.json();
+      setAppliedDiscount({
+        code: data.data.code,
+        discountAmount: data.data.discountAmount,
+        finalAmount: data.data.finalAmount,
+        originalAmount: data.data.originalAmount,
+      });
+      toast.success(`Coupon ${data.data.code} applied! You saved $${data.data.discountAmount.toFixed(2)}`);
+    } catch (error) {
+      console.error('Coupon validation error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to apply coupon');
+      setAppliedDiscount(null);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedDiscount(null);
+    setCouponCode('');
+    toast.info('Coupon removed');
   };
 
   const calculateTotal = () => {
     if (!course) return 0;
     return appliedDiscount ? appliedDiscount.finalAmount : course.price;
+  };
+
+  const handleVerifySession = async (sessionId: string, courseId: number, orderId: number, retries = 3, delay = 2000) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/payment/verify-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${user?.token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({ sessionId, courseId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to verify payment');
+      }
+
+      if (data.pending && retries > 0) {
+        console.log(`Payment pending, retrying in ${delay}ms... (${retries} retries left)`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return handleVerifySession(sessionId, courseId, orderId, retries - 1, delay * 2);
+      }
+
+      if (data.success) {
+        toast.success('Course purchased successfully!');
+        router.push(data.redirectUrl || `/courses/${courseId}/modules`);
+      } else {
+        throw new Error('Payment verification failed');
+      }
+    } catch (error) {
+      console.error('Verification error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to verify payment');
+    }
   };
 
   const handleCheckout = async () => {
@@ -100,27 +188,54 @@ export default function CheckoutPage() {
     setProcessing(true);
 
     try {
-      const response = await fetch('http://localhost:5000/api/courses/purchase', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/payment/checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${user.token}`,
+          Authorization: `Bearer ${user.token}`,
         },
         credentials: 'include',
         body: JSON.stringify({
           courseId: course.id,
-          discountCode: appliedDiscount?.code,
+          couponCode: appliedDiscount?.code,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || 'Enrollment failed');
+        if (data.error === 'Already enrolled in this course') {
+          toast.info('You are already enrolled in this course');
+          router.push(data.redirectUrl);
+          return;
+        }
+        throw new Error(data.error || 'Failed to create checkout session');
       }
 
-      toast.success('🎉 Successfully enrolled in course!');
-      router.push(`/courses/${course.id}/modules?enrolled=true`);
+      // Handle free course or fully discounted course
+      if (data.success && !data.url && data.enrollment) {
+        toast.success('Successfully enrolled in the course!');
+        router.push(data.redirectUrl);
+        return;
+      }
+
+      // Handle paid course
+      if (data.url && data.sessionId) {
+        const stripe = await stripePromise;
+        if (!stripe) {
+          throw new Error('Stripe failed to initialize');
+        }
+
+        const { error: stripeError } = await stripe.redirectToCheckout({
+          sessionId: data.sessionId,
+        });
+
+        if (stripeError) {
+          throw new Error(stripeError.message);
+        }
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (error) {
       console.error('Checkout error:', error);
       toast.error(error instanceof Error ? error.message : 'Checkout failed');
@@ -243,12 +358,44 @@ export default function CheckoutPage() {
             </div>
           </div>
           <div className="space-y-6">
-            <DiscountValidator
-              originalAmount={course.price}
-              itemId={course.id}
-              itemType="COURSE"
-              onDiscountApplied={handleDiscountApplied}
-            />
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <TagIcon className="w-5 h-5 text-blue-400" />
+                Apply Coupon
+              </h3>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  placeholder="Enter coupon code"
+                  className="flex-1 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                  disabled={processing}
+                />
+                {appliedDiscount ? (
+                  <button
+                    onClick={handleRemoveCoupon}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                    disabled={processing}
+                  >
+                    Remove
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleApplyCoupon}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                    disabled={processing}
+                  >
+                    Apply
+                  </button>
+                )}
+              </div>
+              {appliedDiscount && (
+                <div className="mt-4 text-sm text-green-400">
+                  Coupon {appliedDiscount.code} applied! You saved ${appliedDiscount.discountAmount.toFixed(2)}.
+                </div>
+              )}
+            </div>
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                 <CurrencyDollarIcon className="w-5 h-5 text-green-400" />
@@ -256,8 +403,8 @@ export default function CheckoutPage() {
               </h3>
               <div className="space-y-3">
                 <div className="flex justify-between text-gray-300">
-                  <span>Course Price:</span>
-                  <span>${course.price.toFixed(2)}</span>
+                  <span>Original Price:</span>
+                  <span>${(appliedDiscount?.originalAmount || course.price).toFixed(2)}</span>
                 </div>
                 {appliedDiscount && (
                   <div className="flex justify-between text-green-400">
@@ -265,42 +412,30 @@ export default function CheckoutPage() {
                     <span>-${appliedDiscount.discountAmount.toFixed(2)}</span>
                   </div>
                 )}
-                <div className="border-t border-white/10 pt-3">
-                  <div className="flex justify-between text-xl font-bold text-white">
-                    <span>Total:</span>
-                    <span>${calculateTotal().toFixed(2)}</span>
-                  </div>
+                <div className="flex justify-between text-white font-semibold pt-2 border-t border-gray-600">
+                  <span>Total:</span>
+                  <span>${calculateTotal().toFixed(2)}</span>
                 </div>
-                {appliedDiscount && (
-                  <div className="text-center text-sm text-green-400">
-                    You saved ${appliedDiscount.discountAmount.toFixed(2)}!
-                  </div>
+              </div>
+              <button
+                onClick={handleCheckout}
+                disabled={processing}
+                className={`mt-6 w-full py-3 rounded-lg font-medium transition-colors ${
+                  processing ? 'bg-gray-600 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                } text-white flex items-center justify-center gap-2`}
+              >
+                {processing ? (
+                  <>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <CreditCardIcon className="w-5 h-5" />
+                    Proceed to Payment
+                  </>
                 )}
-              </div>
-            </div>
-            <button
-              onClick={handleCheckout}
-              disabled={processing || !user?.token}
-              className="w-full py-4 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white rounded-2xl font-semibold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-            >
-              {processing ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <CreditCardIcon className="w-5 h-5" />
-                  Enroll Now - ${calculateTotal().toFixed(2)}
-                </>
-              )}
-            </button>
-            <div className="text-xs text-gray-400 text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <CheckCircleIcon className="w-3 h-3" />
-                <span>Secure checkout</span>
-              </div>
-              <p>Your payment is encrypted and secure</p>
+              </button>
             </div>
           </div>
         </div>
