@@ -1,10 +1,3 @@
-// app/checkout/page.tsx
-// Changes:
-// - Fixed handleCheckout to check for data.url explicitly before redirecting to Stripe.
-// - Only show success toast after verifying payment for paid courses.
-// - Added retry logic for verifySession in handleVerifySession.
-// - Improved error handling and feedback.
-
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -30,9 +23,24 @@ interface Course {
   price: number;
   duration?: number;
   instructor?: string;
-  category?: {
-    name: string;
-  };
+  category?: { name: string };
+}
+
+interface Bundle {
+  id: number;
+  name: string;
+  description?: string;
+  finalPrice: number;
+  totalPrice: number;
+  courseItems: Array<{
+    course: {
+      id: number;
+      title: string;
+      price: number;
+      description: string;
+      category?: { name: string };
+    };
+  }>;
 }
 
 interface DiscountInfo {
@@ -45,7 +53,8 @@ interface DiscountInfo {
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '');
 
 export default function CheckoutPage() {
-  const [course, setCourse] = useState<Course | null>(null);
+  const [item, setItem] = useState<Course | Bundle | null>(null);
+  const [itemType, setItemType] = useState<'course' | 'bundle' | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +65,7 @@ export default function CheckoutPage() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const courseId = searchParams.get('courseId');
+  const bundleId = searchParams.get('bundleId');
 
   useEffect(() => {
     if (!user?.token) {
@@ -63,33 +73,60 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (!courseId) {
-      router.push('/categories');
+    if (!courseId && !bundleId) {
+      setError('No item selected');
+      setLoading(false);
       return;
     }
 
-    fetchCourse();
-  }, [courseId, user, router]);
+    if (courseId) {
+      fetchCourse();
+      setItemType('course');
+    } else if (bundleId) {
+      fetchBundle();
+      setItemType('bundle');
+    }
+  }, [courseId, bundleId, user, router]);
 
   const fetchCourse = async () => {
     try {
       setLoading(true);
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/courses/${courseId}`, {
-        headers: {
-          Authorization: `Bearer ${user?.token}`,
-        },
+        headers: { Authorization: `Bearer ${user?.token}` },
         credentials: 'include',
       });
 
       if (!response.ok) {
-        throw new Error('Course not found or unavailable');
+        throw new Error('Course not found');
       }
 
       const data = await response.json();
-      setCourse(data);
+      setItem(data);
     } catch (err) {
       console.error('Error fetching course:', err);
       setError('Failed to load course details');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchBundle = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bundles/${bundleId}`, {
+        headers: { Authorization: `Bearer ${user?.token}` },
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        throw new Error('Bundle not found');
+      }
+
+      const data = await response.json();
+      setItem(data);
+    } catch (err) {
+      console.error('Error fetching bundle:', err);
+      setError('Failed to load bundle details');
     } finally {
       setLoading(false);
     }
@@ -111,23 +148,25 @@ export default function CheckoutPage() {
         credentials: 'include',
         body: JSON.stringify({
           code: couponCode,
-          courseId,
+          courseId: itemType === 'course' ? courseId : undefined,
+          bundleId: itemType === 'bundle' ? bundleId : undefined,
         }),
       });
 
-      if (!response.ok) {
-        const data = await response.json();
+      const data = await response.json();
+      console.log('Coupon validation response:', data);
+
+      if (!response.ok || !data.success) {
         throw new Error(data.message || 'Invalid coupon code');
       }
 
-      const data = await response.json();
       setAppliedDiscount({
         code: data.data.code,
         discountAmount: data.data.discountAmount,
         finalAmount: data.data.finalAmount,
         originalAmount: data.data.originalAmount,
       });
-      toast.success(`Coupon ${data.data.code} applied! You saved $${data.data.discountAmount.toFixed(2)}`);
+      toast.success(`Coupon ${data.data.code} applied! Saved $${data.data.discountAmount.toFixed(2)}`);
     } catch (error) {
       console.error('Coupon validation error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to apply coupon');
@@ -142,84 +181,56 @@ export default function CheckoutPage() {
   };
 
   const calculateTotal = () => {
-    if (!course) return 0;
-    return appliedDiscount ? appliedDiscount.finalAmount : course.price;
-  };
-
-  const handleVerifySession = async (sessionId: string, courseId: number, orderId: number, retries = 3, delay = 2000) => {
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/payment/verify-session`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${user?.token}`,
-        },
-        credentials: 'include',
-        body: JSON.stringify({ sessionId, courseId }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to verify payment');
-      }
-
-      if (data.pending && retries > 0) {
-        console.log(`Payment pending, retrying in ${delay}ms... (${retries} retries left)`);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        return handleVerifySession(sessionId, courseId, orderId, retries - 1, delay * 2);
-      }
-
-      if (data.success) {
-        toast.success('Course purchased successfully!');
-        router.push(data.redirectUrl || `/courses/${courseId}/modules`);
-      } else {
-        throw new Error('Payment verification failed');
-      }
-    } catch (error) {
-      console.error('Verification error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to verify payment');
-    }
+    if (!item) return 0;
+    const price = itemType === 'course' ? (item as Course).price : (item as Bundle).finalPrice;
+    return appliedDiscount ? appliedDiscount.finalAmount : price;
   };
 
   const handleCheckout = async () => {
-    if (!course || !user?.token) return;
+    if (!item || !user?.token) {
+      toast.error('Please log in and select an item');
+      return;
+    }
 
     setProcessing(true);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/payment/checkout`, {
+      const endpoint = itemType === 'course' ? '/api/payment/checkout' : '/api/bundles/purchase';
+      const body = itemType === 'course' 
+        ? { courseId: (item as Course).id, couponCode: appliedDiscount?.code || '' }
+        : { bundleId: (item as Bundle).id, couponCode: appliedDiscount?.code || '' };
+
+      console.log('Initiating checkout:', { itemId: (item as any).id, couponCode: appliedDiscount?.code });
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${user.token}`,
         },
         credentials: 'include',
-        body: JSON.stringify({
-          courseId: course.id,
-          couponCode: appliedDiscount?.code,
-        }),
+        body: JSON.stringify(body),
       });
 
       const data = await response.json();
+      console.log('Checkout response:', data);
 
-      if (!response.ok) {
-        if (data.error === 'Already enrolled in this course') {
-          toast.info('You are already enrolled in this course');
-          router.push(data.redirectUrl);
+      if (!response.ok || !data.success) {
+        if (data.message === 'You are already enrolled in this course' || data.message === 'You already own this bundle') {
+          toast.info(data.message);
+          router.push(data.redirectUrl || '/my-courses');
           return;
         }
-        throw new Error(data.error || 'Failed to create checkout session');
+        throw new Error(data.message || 'Failed to create checkout session');
       }
 
-      // Handle free course or fully discounted course
-      if (data.success && !data.url && data.enrollment) {
-        toast.success('Successfully enrolled in the course!');
-        router.push(data.redirectUrl);
+      // Free course/bundle or fully discounted
+      if (!data.url && data.enrollment) {
+        toast.success(`Successfully enrolled in ${itemType === 'course' ? 'the course' : 'the bundle'}!`);
+        router.push(data.redirectUrl || '/my-courses');
         return;
       }
 
-      // Handle paid course
+      // Paid course/bundle
       if (data.url && data.sessionId) {
         const stripe = await stripePromise;
         if (!stripe) {
@@ -234,7 +245,7 @@ export default function CheckoutPage() {
           throw new Error(stripeError.message);
         }
       } else {
-        throw new Error('Invalid response from server');
+        throw new Error('Invalid response: Missing payment URL');
       }
     } catch (error) {
       console.error('Checkout error:', error);
@@ -255,11 +266,11 @@ export default function CheckoutPage() {
     );
   }
 
-  if (error || !course) {
+  if (error || !item) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] flex items-center justify-center">
         <div className="text-center">
-          <div className="text-red-400 mb-4 text-xl">⚠️ {error || 'Course not found'}</div>
+          <div className="text-red-400 mb-4 text-xl">⚠️ {error || 'Item not found'}</div>
           <button
             onClick={() => router.push('/categories')}
             className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -288,7 +299,7 @@ export default function CheckoutPage() {
               </div>
               <div>
                 <h1 className="text-xl font-semibold">Checkout</h1>
-                <p className="text-sm text-gray-400">Complete your course enrollment</p>
+                <p className="text-sm text-gray-400">Complete your {itemType === 'course' ? 'course' : 'bundle'} enrollment</p>
               </div>
             </div>
           </div>
@@ -301,46 +312,73 @@ export default function CheckoutPage() {
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
               <div className="flex items-center gap-3 mb-4">
                 <ShoppingCartIcon className="w-6 h-6 text-blue-400" />
-                <h2 className="text-xl font-semibold">Course Summary</h2>
+                <h2 className="text-xl font-semibold">{itemType === 'course' ? 'Course Summary' : 'Bundle Summary'}</h2>
               </div>
-              <div className="flex gap-4">
-                <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl flex items-center justify-center">
-                  <BookOpenIcon className="w-8 h-8 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-white mb-2">{course.title}</h3>
-                  <p className="text-gray-300 text-sm mb-3 line-clamp-2">{course.description}</p>
-                  <div className="flex items-center gap-4 text-sm text-gray-400">
-                    {course.category && <span>{course.category.name}</span>}
-                    {course.duration && (
-                      <>
-                        <span>•</span>
-                        <div className="flex items-center gap-1">
-                          <ClockIcon className="w-3 h-3" />
-                          <span>{course.duration} hours</span>
-                        </div>
-                      </>
-                    )}
-                    {course.instructor && (
-                      <>
-                        <span>•</span>
-                        <span>by {course.instructor}</span>
-                      </>
-                    )}
+              {itemType === 'course' ? (
+                <div className="flex gap-4">
+                  <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl flex items-center justify-center">
+                    <BookOpenIcon className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-white mb-2">{(item as Course).title}</h3>
+                    <p className="text-gray-300 text-sm mb-3 line-clamp-2">{(item as Course).description}</p>
+                    <div className="flex items-center gap-4 text-sm text-gray-400">
+                      {(item as Course).category && <span>{(item as Course).category!.name}</span>}
+                      {(item as Course).duration && (
+                        <>
+                          <span>•</span>
+                          <div className="flex items-center gap-1">
+                            <ClockIcon className="w-3 h-3" />
+                            <span>{(item as Course).duration} hours</span>
+                          </div>
+                        </>
+                      )}
+                      {(item as Course).instructor && (
+                        <>
+                          <span>•</span>
+                          <span>by {(item as Course).instructor}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-white">${(item as Course).price.toFixed(2)}</div>
+                    <div className="text-sm text-gray-400">One-time payment</div>
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="text-2xl font-bold text-white">${course.price.toFixed(2)}</div>
-                  <div className="text-sm text-gray-400">One-time payment</div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex gap-4">
+                    <div className="w-20 h-20 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center">
+                      <ShoppingCartIcon className="w-8 h-8 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-white mb-2">{(item as Bundle).name}</h3>
+                      <p className="text-gray-300 text-sm mb-3 line-clamp-2">{(item as Bundle).description || 'A curated collection of courses'}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-white">${(item as Bundle).finalPrice.toFixed(2)}</div>
+                      <div className="text-sm text-gray-400">One-time payment</div>
+                    </div>
+                  </div>
+                  <div className="border-t border-white/10 pt-4">
+                    <h4 className="text-sm font-semibold text-gray-300 mb-2">Included Courses:</h4>
+                    {(item as Bundle).courseItems.map(({ course }) => (
+                      <div key={course.id} className="flex items-center gap-2 text-sm text-gray-400 mb-2">
+                        <BookOpenIcon className="w-4 h-4 text-blue-400" />
+                        <span>{course.title} (${course.price.toFixed(2)})</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
             <div className="bg-white/5 border border-white/10 rounded-2xl p-6">
               <h3 className="text-lg font-semibold mb-4">What you'll get:</h3>
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <CheckCircleIcon className="w-5 h-5 text-green-400" />
-                  <span className="text-gray-300">Lifetime access to course content</span>
+                  <span className="text-gray-300">{itemType === 'course' ? 'Lifetime access to course content' : 'Lifetime access to all bundle courses'}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <CheckCircleIcon className="w-5 h-5 text-green-400" />
@@ -352,7 +390,7 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   <CheckCircleIcon className="w-5 h-5 text-green-400" />
-                  <span className="text-gray-300">Certificate of completion</span>
+                  <span className="text-gray-300">Certificate of completion {itemType === 'bundle' ? 'for each course' : ''}</span>
                 </div>
               </div>
             </div>
@@ -392,7 +430,7 @@ export default function CheckoutPage() {
               </div>
               {appliedDiscount && (
                 <div className="mt-4 text-sm text-green-400">
-                  Coupon {appliedDiscount.code} applied! You saved ${appliedDiscount.discountAmount.toFixed(2)}.
+                  Coupon {appliedDiscount.code} applied! Saved ${appliedDiscount.discountAmount.toFixed(2)}.
                 </div>
               )}
             </div>
@@ -404,7 +442,7 @@ export default function CheckoutPage() {
               <div className="space-y-3">
                 <div className="flex justify-between text-gray-300">
                   <span>Original Price:</span>
-                  <span>${(appliedDiscount?.originalAmount || course.price).toFixed(2)}</span>
+                  <span>${(appliedDiscount?.originalAmount || (itemType === 'course' ? (item as Course).price : (item as Bundle).finalPrice)).toFixed(2)}</span>
                 </div>
                 {appliedDiscount && (
                   <div className="flex justify-between text-green-400">
