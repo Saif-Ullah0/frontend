@@ -1,4 +1,3 @@
-// app/success/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -34,11 +33,23 @@ type Course = {
   rating?: number;
 };
 
+type Bundle = {
+  id: number;
+  name: string;
+  description?: string;
+  finalPrice: number;
+  courseItems: Array<{
+    course: Course;
+  }>;
+};
+
 type OrderItem = {
   id: number;
-  courseId: number;
+  courseId?: number;
+  bundleId?: number;
   price: number;
-  course: Course;
+  course?: Course;
+  bundle?: Bundle;
 };
 
 type Order = {
@@ -69,6 +80,8 @@ export default function SuccessPage() {
   useEffect(() => {
     const sessionId = searchParams.get('session_id');
     const courseId = searchParams.get('course_id');
+    const bundleId = searchParams.get('bundle_id');
+    const orderId = searchParams.get('order_id');
 
     if (!sessionId) {
       setError('Invalid payment session - missing session ID');
@@ -76,83 +89,141 @@ export default function SuccessPage() {
       return;
     }
 
-    // Verify payment and get order details
     const verifyPaymentAndGetDetails = async () => {
       try {
-        console.log('Verifying payment with:', { sessionId, courseId });
+        console.log('Verifying payment with:', { sessionId, courseId, bundleId, orderId });
 
-        // Verify the Stripe session and get order details
-        const res = await fetch('http://localhost:5000/api/payment/verify-session', {
+        // Verify payment session
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/payment/verify-session`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
             sessionId,
-            courseId: courseId ? parseInt(courseId) : undefined
+            courseId: courseId ? parseInt(courseId) : undefined,
+            bundleId: bundleId ? parseInt(bundleId) : undefined,
+            orderId: orderId ? parseInt(orderId) : undefined
           }),
           credentials: 'include',
         });
 
         if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.error || 'Payment verification failed');
+          const errorData = await res.json().catch(() => ({ error: 'Unknown error', details: '' }));
+          throw new Error(errorData.error || errorData.details || `HTTP ${res.status}: Payment verification failed`);
         }
 
         const data = await res.json();
         console.log('Payment verification response:', data);
-        
-        if (data.success && data.order) {
-          // Get the first course from the order (assuming single course purchase)
-          const mainCourse = data.order.items[0]?.course;
-          
-          if (!mainCourse) {
-            throw new Error('No course found in order');
+
+        if (data.success) {
+          let orderData: Order | undefined;
+
+          // If order is not in the response, fetch it separately
+          if (!data.order && orderId) {
+            console.log('Fetching order details for orderId:', orderId);
+            const orderRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/orders/${orderId}`, {
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+            });
+
+            if (!orderRes.ok) {
+              const errorData = await orderRes.json().catch(() => ({ error: 'Unknown error' }));
+              throw new Error(errorData.error || `Failed to fetch order details for Order ID ${orderId}`);
+            }
+
+            orderData = await orderRes.json();
+            console.log('Order details response:', orderData);
+          } else {
+            orderData = data.order;
           }
 
+          if (!orderData) {
+            throw new Error('Order details not found');
+          }
+
+          // Construct minimal payment details
           setPaymentDetails({
-            transactionId: data.transactionId || sessionId,
-            amount: data.amount || data.order.totalAmount,
-            currency: data.currency || 'USD',
-            order: data.order,
-            paymentDate: data.order.createdAt || new Date().toISOString()
+            transactionId: sessionId,
+            amount: orderData.totalAmount || 0,
+            currency: 'USD',
+            order: {
+              id: orderData.id,
+              userId: orderData.userId,
+              status: orderData.status || 'COMPLETED',
+              totalAmount: orderData.totalAmount || 0,
+              createdAt: orderData.createdAt || new Date().toISOString(),
+              items: orderData.items || [{
+                id: 1,
+                courseId: courseId ? parseInt(courseId) : undefined,
+                bundleId: bundleId ? parseInt(bundleId) : undefined,
+                price: orderData.totalAmount || 0,
+                course: courseId ? {
+                  id: parseInt(courseId),
+                  title: 'Course Title', // Placeholder, fetch if needed
+                  description: 'Course Description',
+                  price: orderData.totalAmount || 0,
+                  category: { id: 1, name: 'General' }
+                } : undefined,
+                bundle: bundleId ? {
+                  id: parseInt(bundleId),
+                  name: 'Bundle Title',
+                  finalPrice: orderData.totalAmount || 0,
+                  courseItems: []
+                } : undefined
+              }]
+            },
+            paymentDate: orderData.createdAt || new Date().toISOString()
           });
-          
+
           setShowConfetti(true);
           setTimeout(() => setShowConfetti(false), 5000);
           
-          toast.success('Payment successful! You are now enrolled! 🎉');
+          toast.success(data.message || 'Payment successful! You are now enrolled! 🎉');
+
+          // Auto-redirect to course modules or my-courses after 2 seconds
+          setTimeout(() => {
+            const redirectPath = courseId 
+              ? `/courses/${courseId}/modules`
+              : '/my-courses';
+            console.log('Redirecting to:', redirectPath);
+            router.push(redirectPath);
+          }, 2000);
+
         } else {
-          throw new Error(data.error || 'Payment verification failed');
+          throw new Error(data.error || data.message || 'Payment verification failed');
         }
 
       } catch (err) {
         console.error('Error verifying payment:', err);
-        const errorMessage = err instanceof Error ? err.message : 'Failed to verify payment. Please contact support if payment was deducted.';
-        setError(errorMessage);
+        const errorMessage = err instanceof Error 
+          ? err.message 
+          : 'Failed to verify payment. Please contact support if payment was deducted.';
+        setError(`${errorMessage} (Order ID: ${orderId || 'Unknown'})`);
       } finally {
         setLoading(false);
       }
     };
 
     verifyPaymentAndGetDetails();
-  }, [searchParams]);
+  }, [searchParams, router]);
 
   const handleShareSuccess = () => {
     if (paymentDetails && paymentDetails.order.items.length > 0) {
-      const course = paymentDetails.order.items[0].course;
+      const item = paymentDetails.order.items[0];
+      const isCourse = !!item.course;
+      const title = isCourse ? item.course!.title : item.bundle!.name;
+      const id = isCourse ? item.course!.id : item.bundle!.id;
       
       if (navigator.share) {
         navigator.share({
-          title: 'I just enrolled in a new course!',
-          text: `I just started learning "${course.title}" - excited to dive in!`,
-          url: window.location.origin + `/courses/${course.id}`
+          title: `I just enrolled in a new ${isCourse ? 'course' : 'bundle'}!`,
+          text: `I just started learning "${title}" - excited to dive in!`,
+          url: window.location.origin + `/${isCourse ? 'courses' : 'bundles'}/${id}`
         }).catch(() => {
-          // Fallback to clipboard
-          navigator.clipboard.writeText(`I just started learning "${course.title}" at ${window.location.origin}/courses/${course.id}`);
+          navigator.clipboard.writeText(`I just started learning "${title}" at ${window.location.origin}/${isCourse ? 'courses' : 'bundles'}/${id}`);
           toast.success('Link copied to clipboard!');
         });
       } else {
-        // Fallback for browsers that don't support Web Share API
-        navigator.clipboard.writeText(`I just started learning "${course.title}" at ${window.location.origin}/courses/${course.id}`)
+        navigator.clipboard.writeText(`I just started learning "${title}" at ${window.location.origin}/${isCourse ? 'courses' : 'bundles'}/${id}`)
           .then(() => {
             toast.success('Link copied to clipboard!');
           })
@@ -188,8 +259,7 @@ export default function SuccessPage() {
           <p className="text-gray-300 mb-8">
             {error?.includes('missing session ID') 
               ? 'Payment session information is missing. Please try accessing this page from a valid payment completion.'
-              : `${error}. If your payment was processed, please contact support with your transaction details.`
-            }
+              : `${error}. If your payment was processed, please contact support with your transaction details.`}
           </p>
           <div className="space-y-3">
             <button
@@ -210,16 +280,15 @@ export default function SuccessPage() {
     );
   }
 
-  const mainCourse = paymentDetails.order.items[0]?.course;
-  const totalCourses = paymentDetails.order.items.length;
+  const mainItem = paymentDetails.order.items[0];
+  const isCourse = !!mainItem.course;
+  const totalItems = paymentDetails.order.items.length;
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] text-white relative overflow-hidden">
-      {/* Background Effects */}
       <div className="absolute top-[-100px] left-[-100px] w-[500px] h-[500px] bg-gradient-to-r from-green-500/20 to-emerald-500/20 blur-[160px] rounded-full animate-pulse-slow"></div>
       <div className="absolute bottom-[-100px] right-[-100px] w-[400px] h-[400px] bg-gradient-to-r from-blue-500/20 to-purple-500/20 blur-[140px] rounded-full animate-pulse-slower"></div>
 
-      {/* Confetti Effect */}
       {showConfetti && (
         <div className="fixed inset-0 pointer-events-none z-50">
           {[...Array(50)].map((_, i) => (
@@ -238,7 +307,6 @@ export default function SuccessPage() {
 
       <div className="relative z-10 px-6 py-8">
         <div className="max-w-4xl mx-auto">
-          {/* Success Header */}
           <div className="text-center mb-12 animate-fade-in">
             <div className="relative inline-block mb-6">
               <div className="w-32 h-32 bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-full flex items-center justify-center mx-auto border border-green-500/30 animate-scale-in">
@@ -254,11 +322,10 @@ export default function SuccessPage() {
             </h1>
             <p className="text-2xl text-gray-300 mb-2">Welcome to your learning journey!</p>
             <p className="text-gray-400">
-              {totalCourses === 1 ? 'You are now enrolled in your course' : `You are now enrolled in ${totalCourses} courses`}
+              {totalItems === 1 ? `You are now enrolled in your ${isCourse ? 'course' : 'bundle'}` : `You are now enrolled in ${totalItems} items`}
             </p>
           </div>
 
-          {/* Payment Summary Card */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl mb-8 animate-slide-up">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -271,7 +338,6 @@ export default function SuccessPage() {
               </div>
             </div>
 
-            {/* Course Details */}
             <div className="space-y-4">
               {paymentDetails.order.items.map((item) => (
                 <div key={item.id} className="border border-white/10 rounded-xl p-6 bg-white/5">
@@ -281,14 +347,28 @@ export default function SuccessPage() {
                     </div>
                     
                     <div className="flex-1">
-                      <h3 className="text-xl font-bold text-white mb-2">{item.course.title}</h3>
-                      <p className="text-gray-400 text-sm mb-3 line-clamp-2">{item.course.description}</p>
-                      
-                     
-
-                      <p className="text-gray-400">
-                        Instructor: <span className="text-white">{item.course.instructor || 'Dr Waleed'}</span>
-                      </p>
+                      <h3 className="text-xl font-bold text-white mb-2">{isCourse ? item.course!.title : item.bundle!.name}</h3>
+                      <p className="text-gray-400 text-sm mb-3 line-clamp-2">{isCourse ? item.course!.description : item.bundle!.description || 'A curated collection of courses'}</p>
+                      {isCourse ? (
+                        <>
+                          <p className="text-gray-400">
+                            Category: <span className="text-white">{item.course!.category.name}</span>
+                          </p>
+                          <p className="text-gray-400">
+                            Instructor: <span className="text-white">{item.course!.instructor || 'Dr Waleed'}</span>
+                          </p>
+                        </>
+                      ) : (
+                        <div className="mt-2">
+                          <p className="text-gray-400 text-sm mb-2">Included Courses:</p>
+                          {item.bundle!.courseItems.map(({ course }) => (
+                            <div key={course.id} className="flex items-center gap-2 text-sm text-gray-400 mb-1">
+                              <BookOpen className="w-4 h-4 text-blue-400" />
+                              <span>{course.title}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
                     <div className="text-right">
@@ -304,7 +384,6 @@ export default function SuccessPage() {
               ))}
             </div>
 
-            {/* Order Summary */}
             <div className="border-t border-white/10 pt-6 mt-6">
               <div className="flex items-center justify-between text-lg font-semibold">
                 <span className="text-white">Total Amount Paid</span>
@@ -314,12 +393,11 @@ export default function SuccessPage() {
               </div>
             </div>
 
-            {/* Quick Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
               <div className="bg-white/5 rounded-xl p-4 text-center">
                 <BookOpen className="w-8 h-8 text-blue-400 mx-auto mb-2" />
-                <p className="text-2xl font-bold text-white">{totalCourses}</p>
-                <p className="text-gray-400 text-sm">{totalCourses === 1 ? 'Course' : 'Courses'} Enrolled</p>
+                <p className="text-2xl font-bold text-white">{totalItems}</p>
+                <p className="text-gray-400 text-sm">{totalItems === 1 ? (isCourse ? 'Course' : 'Bundle') : 'Items'} Enrolled</p>
               </div>
               
               <div className="bg-white/5 rounded-xl p-4 text-center">
@@ -335,14 +413,13 @@ export default function SuccessPage() {
               </div>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-4 mt-8">
               <Link
-                href={totalCourses === 1 ? `/courses/${mainCourse.id}/modules` : '/my-courses'}
+                href={totalItems === 1 ? (isCourse ? `/courses/${mainItem.course!.id}/modules` : '/my-courses') : '/my-courses'}
                 className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-6 py-4 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 flex items-center justify-center gap-2"
               >
                 <Play className="w-5 h-5" />
-                {totalCourses === 1 ? 'Start Learning Now' : 'View My Courses'}
+                {totalItems === 1 && isCourse ? 'Start Learning Now' : 'View My Courses'}
               </Link>
               
               <button
@@ -355,11 +432,10 @@ export default function SuccessPage() {
             </div>
           </div>
 
-          {/* Next Steps */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl mb-8 animate-slide-up" style={{ animationDelay: '0.2s' }}>
             <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
               <Calendar className="w-6 h-6 text-blue-400" />
-              Whats Next?
+              What's Next?
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -409,7 +485,6 @@ export default function SuccessPage() {
             </div>
           </div>
 
-          {/* Quick Actions */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-slide-up" style={{ animationDelay: '0.4s' }}>
             <Link
               href="/my-courses"
