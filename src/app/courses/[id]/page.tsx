@@ -1,10 +1,7 @@
-// frontend/src/app/courses/[id]/page.tsx
-// Switch to client-side approach since that's already working
-
 "use client";
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   BookOpenIcon,
@@ -12,11 +9,8 @@ import {
   PlayCircleIcon,
   CheckCircleIcon,
   AcademicCapIcon,
-  ChartBarIcon,
   CurrencyDollarIcon,
-  StarIcon,
   UserGroupIcon,
-  GlobeAltIcon,
   LockClosedIcon,
   FolderIcon,
   DocumentTextIcon,
@@ -26,16 +20,11 @@ import {
   ChevronRightIcon,
   ShoppingCartIcon,
   EyeIcon,
-  CalendarIcon,
   TagIcon,
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  ShoppingBagIcon,
-  SparklesIcon,
-  InformationCircleIcon,
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Course {
   id: number;
@@ -61,8 +50,6 @@ interface Course {
   };
   modules: Module[];
   enrollmentCount: number;
-  rating?: number;
-  reviewCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -119,13 +106,21 @@ interface UserEnrollment {
   id: number;
   progress: number;
   lastAccessed: string;
-  enrolledAt: string;
-  completed: boolean;
+  createdAt: string;
+}
+
+interface DiscountInfo {
+  code: string;
+  discountAmount: number;
+  finalAmount: number;
+  originalAmount: number;
 }
 
 export default function CourseDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const courseId = params.id as string;
+  const { user, loading: authLoading } = useAuth();
   
   const [course, setCourse] = useState<Course | null>(null);
   const [bundles, setBundles] = useState<Bundle[]>([]);
@@ -134,14 +129,15 @@ export default function CourseDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [enrollLoading, setEnrollLoading] = useState(false);
   const [expandedModules, setExpandedModules] = useState<Set<number>>(new Set());
-  const [activeTab, setActiveTab] = useState<'overview' | 'curriculum' | 'bundles' | 'instructor'>('overview');
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState<DiscountInfo | null>(null);
 
   useEffect(() => {
     if (courseId) {
       console.log('🎓 Starting CourseDetailPage for ID:', courseId);
       fetchCourseData();
     }
-  }, [courseId]);
+  }, [courseId, authLoading, user]);
 
   const fetchCourseData = async () => {
     try {
@@ -149,16 +145,22 @@ export default function CourseDetailPage() {
       setLoading(true);
       setError(null);
 
-      // Fetch course details with enhanced error handling
+      if (authLoading) {
+        console.log('⏳ Auth context is still loading');
+        return;
+      }
+
       await fetchCourseDetails();
       
-      // Fetch related data (don't let these block the main loading)
-      fetchRelatedBundles().catch(err => console.warn('❌ Failed to fetch bundles:', err));
-      fetchUserEnrollment().catch(err => console.warn('❌ Failed to fetch enrollment:', err));
+      if (user) {
+        await fetchRelatedBundles().catch(err => console.warn('❌ Failed to fetch bundles:', err));
+      } else {
+        console.log('👤 No user logged in, skipping authenticated data fetch');
+      }
 
     } catch (error) {
       console.error('❌ Error in fetchCourseData:', error);
-      setError('Failed to load course details');
+      setError(error instanceof Error ? error.message : 'Failed to load course details');
     } finally {
       setLoading(false);
     }
@@ -168,7 +170,7 @@ export default function CourseDetailPage() {
     try {
       console.log('🎓 Fetching course details for ID:', courseId);
       
-      const response = await fetch(`http://localhost:5000/api/courses/${courseId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/courses/${courseId}`, {
         credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
@@ -178,8 +180,8 @@ export default function CourseDetailPage() {
       console.log('📡 Course API response status:', response.status);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        throw new Error(errorData.message || `HTTP ${response.status}: Failed to fetch course`);
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error', details: '' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: Failed to fetch course`);
       }
 
       const data = await response.json();
@@ -189,7 +191,6 @@ export default function CourseDetailPage() {
         throw new Error('No course data received from API');
       }
 
-      // Transform the course data to ensure all expected fields exist
       const transformedCourse: Course = {
         id: data.course.id,
         title: data.course.title || 'Untitled Course',
@@ -213,18 +214,17 @@ export default function CourseDetailPage() {
         },
         modules: data.course.modules || [],
         enrollmentCount: data.course.enrollmentCount || 0,
-        rating: data.course.rating || 4.5,
-        reviewCount: data.course.reviewCount || 0,
         createdAt: data.course.createdAt || new Date().toISOString(),
         updatedAt: data.course.updatedAt || new Date().toISOString()
       };
 
       console.log('✅ Transformed course data:', transformedCourse);
       setCourse(transformedCourse);
+      setEnrollment(data.userEnrollment || null);
 
     } catch (error) {
       console.error('❌ Error fetching course details:', error);
-      throw error; // Re-throw to be caught by the parent function
+      throw error;
     }
   };
 
@@ -232,15 +232,17 @@ export default function CourseDetailPage() {
     try {
       console.log('📦 Fetching related bundles for course:', courseId);
       
-      const response = await fetch(`http://localhost:5000/api/bundles?type=COURSE`, {
-        credentials: 'include'
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bundles?type=COURSE`, {
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
 
       if (response.ok) {
         const data = await response.json();
         console.log('📦 Bundle response:', data);
         
-        // Filter bundles that include this course
         const relatedBundles = (data.bundles || []).filter((bundle: Bundle) => 
           bundle.courseItems?.some(item => item.course.id === parseInt(courseId))
         );
@@ -252,107 +254,169 @@ export default function CourseDetailPage() {
       }
     } catch (error) {
       console.error('❌ Error fetching related bundles:', error);
-      // Don't throw - this is non-critical
     }
   };
 
-  const fetchUserEnrollment = async () => {
+  const handleApplyCoupon = async () => {
+    if (!user) {
+      toast.error('Please log in to apply a coupon');
+      router.push(`/login?redirect=/courses/${courseId}`);
+      return;
+    }
+
+    if (!couponCode.trim()) {
+      toast.error('Please enter a coupon code');
+      return;
+    }
+
     try {
-      console.log('👤 Fetching user enrollment for course:', courseId);
-      
-      const response = await fetch(`http://localhost:5000/api/enrollments/course/${courseId}`, {
-        credentials: 'include'
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/discounts/validate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          code: couponCode,
+          courseId: courseId,
+        }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('👤 Enrollment response:', data);
-        setEnrollment(data.enrollment);
-      } else if (response.status !== 404) {
-        console.warn('Failed to fetch enrollment:', response.status);
+      const data = await response.json();
+      console.log('Coupon validation response:', data);
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Invalid coupon code');
       }
+
+      setAppliedDiscount({
+        code: data.data.code,
+        discountAmount: data.data.discountAmount,
+        finalAmount: data.data.finalAmount,
+        originalAmount: data.data.originalAmount,
+      });
+      toast.success(`Coupon ${data.data.code} applied! Saved $${data.data.discountAmount.toFixed(2)}`);
     } catch (error) {
-      console.error('❌ Error fetching enrollment:', error);
-      // Don't throw - this is non-critical
+      console.error('Coupon validation error:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to apply coupon');
+      setAppliedDiscount(null);
     }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedDiscount(null);
+    setCouponCode('');
+    toast.info('Coupon removed');
   };
 
   const handleEnrollment = async () => {
     if (!course) return;
+
+    if (!user) {
+      toast.error('Please log in to enroll');
+      router.push(`/login?redirect=/courses/${courseId}`);
+      return;
+    }
     
     setEnrollLoading(true);
     
     try {
       if (course.price === 0) {
-        // Free course - direct enrollment
-        const response = await fetch(`http://localhost:5000/api/enrollments/enroll`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/enrollments/enroll`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
           body: JSON.stringify({ courseId: course.id }),
-          credentials: 'include'
         });
 
+        const data = await response.json();
         if (response.ok) {
           toast.success('Successfully enrolled in course!');
-          fetchUserEnrollment();
-        } else {
-          const errorData = await response.json();
-          toast.error(errorData.message || 'Failed to enroll');
-        }
-      } else {
-        // Paid course - redirect to payment
-        const response = await fetch(`http://localhost:5000/api/courses/purchase`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ courseId: course.id }),
-          credentials: 'include'
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.checkoutUrl) {
-            window.location.href = data.checkoutUrl;
+          if (data.redirectUrl) {
+            router.push(data.redirectUrl);
           } else {
-            // For demo purposes, if no checkout URL, simulate successful enrollment
-            toast.success('Course purchased successfully!');
-            fetchUserEnrollment();
+            setEnrollment({
+              id: data.enrollment?.id || 0,
+              progress: data.enrollment?.progress || 0,
+              lastAccessed: data.enrollment?.lastAccessed || new Date().toISOString(),
+              createdAt: data.enrollment?.createdAt || new Date().toISOString(),
+            });
           }
         } else {
-          const errorData = await response.json();
-          toast.error(errorData.message || 'Failed to start purchase');
+          if (data.message === 'Already enrolled in this course' && data.redirectUrl) {
+            toast.info('You are already enrolled in this course');
+            router.push(data.redirectUrl);
+            return;
+          }
+          throw new Error(data.message || 'Failed to enroll');
+        }
+      } else {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/payment/checkout`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            courseId: course.id,
+            discountCode: appliedDiscount?.code,
+          }),
+        });
+
+        const data = await response.json();
+        if (response.ok && data.url) {
+          console.log('Redirecting to Stripe:', data.url);
+          window.location.href = data.url; // Redirect to Stripe checkout
+        } else if (data.redirectUrl) {
+          toast.info(data.message || 'You are already enrolled');
+          router.push(data.redirectUrl);
+        } else {
+          throw new Error(data.message || 'Failed to start purchase');
         }
       }
     } catch (error) {
       console.error('❌ Error enrolling in course:', error);
-      toast.error('Something went wrong');
+      toast.error(error instanceof Error ? error.message : 'Something went wrong');
     } finally {
       setEnrollLoading(false);
     }
   };
 
   const handleBundlePurchase = async (bundleId: number) => {
+    if (!user) {
+      toast.error('Please log in to purchase');
+      router.push(`/login?redirect=/courses/${courseId}`);
+      return;
+    }
+
     try {
-      const response = await fetch('http://localhost:5000/api/bundles/purchase', {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/bundles/purchase`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bundleId }),
-        credentials: 'include'
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          bundleId,
+          discountCode: appliedDiscount?.code,
+        }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.checkoutUrl) {
-          window.location.href = data.checkoutUrl;
-        } else {
-          toast.success('Bundle purchased successfully!');
-        }
+      const data = await response.json();
+      if (response.ok && data.url) {
+        console.log('Redirecting to Stripe for bundle:', data.url);
+        window.location.href = data.url;
+      } else if (data.redirectUrl) {
+        toast.info(data.message || 'You already own this bundle');
+        router.push(data.redirectUrl);
       } else {
-        const errorData = await response.json();
-        toast.error(errorData.message || 'Failed to purchase bundle');
+        throw new Error(data.message || 'Failed to start bundle purchase');
       }
     } catch (error) {
-      console.error('❌ Error purchasing bundle:', error);
-      toast.error('Something went wrong');
+      console.error('❌ Error initiating bundle purchase:', error);
+      toast.error(error instanceof Error ? error.message : 'Something went wrong');
     }
   };
 
@@ -390,24 +454,22 @@ export default function CourseDetailPage() {
     }
   };
 
-  // Loading state
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
           <span className="text-white text-lg">Loading course details...</span>
           <p className="text-gray-400 text-sm mt-2">Course ID: {courseId}</p>
-          {/* Add debug info */}
           <div className="mt-4 text-xs text-gray-500">
-            Debug: Client-side fetching from http://localhost:5000/api/courses/{courseId}
+            Debug: Client-side fetching from {process.env.NEXT_PUBLIC_API_URL}/api/courses/{courseId}
+            {authLoading && ' | Waiting for authentication'}
           </div>
         </div>
       </div>
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] flex items-center justify-center">
@@ -423,7 +485,7 @@ export default function CourseDetailPage() {
               Try Again
             </button>
             <Link
-              href="/courses"
+              href="/categories"
               className="inline-flex items-center gap-2 px-6 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-xl font-semibold transition-colors"
             >
               <BookOpenIcon className="w-5 h-5" />
@@ -435,7 +497,6 @@ export default function CourseDetailPage() {
     );
   }
 
-  // Course not found
   if (!course) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] flex items-center justify-center">
@@ -444,7 +505,7 @@ export default function CourseDetailPage() {
           <h2 className="text-2xl font-bold text-white mb-4">Course Not Found</h2>
           <p className="text-gray-400 mb-6">The course you're looking for doesn't exist or has been removed.</p>
           <Link
-            href="/courses"
+            href="/categories"
             className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors"
           >
             <BookOpenIcon className="w-5 h-5" />
@@ -462,13 +523,11 @@ export default function CourseDetailPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e]">
-      {/* Background Effects */}
       <div className="absolute top-[-100px] left-[-100px] w-[500px] h-[500px] bg-gradient-to-r from-blue-500/15 to-purple-500/15 blur-[160px] rounded-full animate-pulse-slow"></div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
-        {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm text-gray-400 mb-6">
-          <Link href="/courses" className="hover:text-white transition-colors">Courses</Link>
+          <Link href="/categories" className="hover:text-white transition-colors">Courses</Link>
           <ChevronRightIcon className="w-4 h-4" />
           <Link href={`/categories/${course.category.id}`} className="hover:text-white transition-colors">
             {course.category.name}
@@ -477,10 +536,8 @@ export default function CourseDetailPage() {
           <span className="text-white">{course.title}</span>
         </div>
 
-        {/* Course Header */}
         <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl mb-8">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Course Image */}
             <div className="lg:col-span-1">
               <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-blue-500/20 to-purple-500/20 aspect-video">
                 {course.imageUrl ? (
@@ -499,15 +556,16 @@ export default function CourseDetailPage() {
                   </div>
                 )}
                 
-                {/* Price Badge */}
                 <div className="absolute top-4 right-4 bg-black/50 backdrop-blur-xl rounded-xl px-4 py-2">
                   <div className="text-2xl font-bold text-white">
-                    {course.price === 0 ? 'Free' : `$${course.price.toFixed(2)}`}
+                    {course.price === 0 ? 'Free' : `$${appliedDiscount ? appliedDiscount.finalAmount.toFixed(2) : course.price.toFixed(2)}`}
                   </div>
+                  {appliedDiscount && (
+                    <div className="text-sm text-green-400">Saved ${appliedDiscount.discountAmount.toFixed(2)}</div>
+                  )}
                 </div>
               </div>
 
-              {/* Enrollment Actions */}
               <div className="mt-6 space-y-4">
                 {enrollment ? (
                   <div className="space-y-3">
@@ -538,6 +596,38 @@ export default function CourseDetailPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                        placeholder="Enter coupon code"
+                        className="flex-1 px-4 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                        disabled={enrollLoading}
+                      />
+                      {appliedDiscount ? (
+                        <button
+                          onClick={handleRemoveCoupon}
+                          className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                          disabled={enrollLoading}
+                        >
+                          Remove
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleApplyCoupon}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+                          disabled={enrollLoading}
+                        >
+                          Apply
+                        </button>
+                      )}
+                    </div>
+                    {appliedDiscount && (
+                      <div className="text-sm text-green-400">
+                        Coupon {appliedDiscount.code} applied! Saved ${appliedDiscount.discountAmount.toFixed(2)}.
+                      </div>
+                    )}
                     <button
                       onClick={handleEnrollment}
                       disabled={enrollLoading}
@@ -558,14 +648,13 @@ export default function CourseDetailPage() {
                           ) : (
                             <>
                               <ShoppingCartIcon className="w-5 h-5" />
-                              Purchase Course - ${course.price.toFixed(2)}
+                              Purchase Course - ${appliedDiscount ? appliedDiscount.finalAmount.toFixed(2) : course.price.toFixed(2)}
                             </>
                           )}
                         </>
                       )}
                     </button>
 
-                    {/* Bundle Options */}
                     {bundles.length > 0 && (
                       <div className="mt-4">
                         <p className="text-sm text-gray-400 mb-3">Or save with a bundle:</p>
@@ -575,9 +664,6 @@ export default function CourseDetailPage() {
                               <div className="flex items-center justify-between mb-2">
                                 <h4 className="font-medium text-white text-sm">{bundle.name}</h4>
                                 <div className="flex items-center gap-2">
-                                  {bundle.isFeatured && (
-                                    <SparklesIcon className="w-4 h-4 text-yellow-400" />
-                                  )}
                                   <span className="text-green-400 font-bold">${bundle.finalPrice.toFixed(2)}</span>
                                   <span className="text-gray-400 line-through text-sm">${bundle.totalPrice.toFixed(2)}</span>
                                 </div>
@@ -602,7 +688,6 @@ export default function CourseDetailPage() {
               </div>
             </div>
 
-            {/* Course Information */}
             <div className="lg:col-span-2">
               <div className="flex items-center gap-3 mb-4">
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -621,7 +706,6 @@ export default function CourseDetailPage() {
               <h1 className="text-4xl font-bold text-white mb-4">{course.title}</h1>
               <p className="text-gray-300 text-lg leading-relaxed mb-6">{course.description}</p>
 
-              {/* Course Stats */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-white/5 rounded-xl p-4">
                   <div className="flex items-center gap-3">
@@ -664,7 +748,6 @@ export default function CourseDetailPage() {
                 </div>
               </div>
 
-              {/* Instructor Info */}
               <div className="bg-white/5 rounded-xl p-4">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
@@ -687,14 +770,12 @@ export default function CourseDetailPage() {
           </div>
         </div>
 
-        {/* Content */}
         <div className="bg-white/5 border border-white/10 rounded-3xl p-8 backdrop-blur-xl">
           <h2 className="text-2xl font-bold text-white mb-6">What You'll Learn</h2>
           <div className="prose prose-invert max-w-none">
             <p className="text-gray-300 leading-relaxed">{course.description}</p>
           </div>
 
-          {/* Show modules if available */}
           {publishedModules.length > 0 && (
             <div className="mt-8">
               <h3 className="text-xl font-semibold text-white mb-4">Course Content</h3>
@@ -775,7 +856,6 @@ export default function CourseDetailPage() {
             </div>
           )}
 
-          {/* Quick Actions */}
           <div className="mt-8 flex flex-wrap gap-4">
             <Link
               href={`/courses/${courseId}/modules`}
