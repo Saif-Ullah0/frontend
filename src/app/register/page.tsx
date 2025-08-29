@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
-import { Eye, EyeOff, CheckCircle2, XCircle, Mail, User, Lock, Sparkles } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle2, XCircle, Mail, User, Lock, Sparkles, LogIn } from 'lucide-react';
 
 type Particle = {
   id: number;
@@ -15,14 +15,13 @@ type Particle = {
 
 export default function RegisterPage() {
   const router = useRouter();
-
+  const searchParams = useSearchParams();
   const [form, setForm] = useState({
     name: '',
     email: '',
     password: '',
     confirmPassword: '',
   });
-
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -30,19 +29,24 @@ export default function RegisterPage() {
   const [isFormValid, setIsFormValid] = useState(false);
   const [particles, setParticles] = useState<Particle[]>([]);
 
-  // ✅ Generate particles on client side only to avoid hydration mismatch
+  useEffect(() => {
+    const error = searchParams.get('error');
+    if (error === 'auth_failed') {
+      toast.error('Social registration failed. Please try again.');
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     const generatedParticles: Particle[] = Array.from({ length: 12 }, (_, i) => ({
       id: i,
       left: `${Math.random() * 100}%`,
       top: `${Math.random() * 100}%`,
       animationDelay: `${Math.random() * 3}s`,
-      animationDuration: `${3 + Math.random() * 2}s`
+      animationDuration: `${3 + Math.random() * 2}s`,
     }));
     setParticles(generatedParticles);
   }, []);
 
-  // Password strength checker
   const calculatePasswordStrength = (password: string) => {
     let strength = 0;
     if (password.length >= 8) strength += 25;
@@ -54,7 +58,7 @@ export default function RegisterPage() {
 
   useEffect(() => {
     setPasswordStrength(calculatePasswordStrength(form.password));
-    const isValid = 
+    const isValid =
       form.name.trim().length >= 2 &&
       form.email.includes('@') &&
       form.password.length >= 6 &&
@@ -63,7 +67,7 @@ export default function RegisterPage() {
   }, [form]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -95,7 +99,6 @@ export default function RegisterPage() {
         return;
       }
 
-      // Auto-login after successful registration
       try {
         const loginRes = await fetch('http://localhost:5000/api/auth/login', {
           method: 'POST',
@@ -110,17 +113,13 @@ export default function RegisterPage() {
         if (loginRes.ok) {
           const loginData = await loginRes.json();
           toast.success('Registration successful! Welcome aboard! 🎉');
-          
-          // Redirect based on user role
           const user = loginData.user;
           router.push(user.role === 'ADMIN' ? '/admin/dashboard' : '/dashboard');
         } else {
-          // If auto-login fails, redirect to login page
           toast.success('Registration successful! Please login to continue.');
           router.push('/login');
         }
       } catch {
-        // If auto-login fails, redirect to login page
         toast.success('Registration successful! Please login to continue.');
         router.push('/login');
       }
@@ -130,6 +129,10 @@ export default function RegisterPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSocialLogin = (provider: 'google' | 'facebook') => {
+    window.location.href = `http://localhost:5000/api/auth/${provider}`;
   };
 
   const getPasswordStrengthColor = () => {
@@ -148,12 +151,10 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-[#0a0b14] via-[#0e0f1a] to-[#1a0e2e] relative overflow-hidden px-4">
-      {/* Enhanced animated background */}
       <div className="absolute top-[-100px] left-[-80px] w-[400px] h-[400px] bg-gradient-to-r from-purple-500/30 to-pink-500/30 blur-[140px] rounded-full animate-pulse-slow z-0"></div>
       <div className="absolute bottom-[-80px] right-[-80px] w-[400px] h-[400px] bg-gradient-to-r from-blue-500/20 to-cyan-500/20 blur-[150px] rounded-full animate-pulse-slow z-0"></div>
       <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-r from-indigo-500/10 to-purple-500/10 blur-[200px] rounded-full animate-pulse-slower z-0"></div>
       
-      {/* Floating particles */}
       <div className="absolute inset-0 overflow-hidden z-0">
         {particles.map((particle) => (
           <div
@@ -163,16 +164,14 @@ export default function RegisterPage() {
               left: particle.left,
               top: particle.top,
               animationDelay: particle.animationDelay,
-              animationDuration: particle.animationDuration
+              animationDuration: particle.animationDuration,
             }}
           />
         ))}
       </div>
 
-      {/* Registration Card */}
       <div className="relative w-full max-w-lg p-[1px] rounded-[32px] bg-gradient-to-br from-white/20 via-white/10 to-white/5 shadow-[0_0_80px_rgba(255,255,255,0.1)] z-10 animate-fade-in">
         <div className="rounded-[30px] bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl px-10 py-12 border border-white/20 shadow-inner shadow-white/10 relative overflow-hidden">
-          {/* Header sparkle effect */}
           <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-white/50 to-transparent"></div>
           
           <div className="text-center mb-8">
@@ -186,7 +185,6 @@ export default function RegisterPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Name Field */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
                 <User className="w-4 h-4" />
@@ -208,7 +206,6 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Email Field */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
                 <Mail className="w-4 h-4" />
@@ -231,7 +228,6 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Password Field */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
                 <Lock className="w-4 h-4" />
@@ -256,8 +252,6 @@ export default function RegisterPage() {
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
-              
-              {/* Password Strength Indicator */}
               {form.password && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-xs">
@@ -267,7 +261,7 @@ export default function RegisterPage() {
                     </span>
                   </div>
                   <div className="w-full bg-gray-700 rounded-full h-2">
-                    <div 
+                    <div
                       className={`h-2 rounded-full transition-all duration-300 ${getPasswordStrengthColor()}`}
                       style={{ width: `${passwordStrength}%` }}
                     ></div>
@@ -276,7 +270,6 @@ export default function RegisterPage() {
               )}
             </div>
 
-            {/* Confirm Password Field */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
                 <Lock className="w-4 h-4" />
@@ -312,7 +305,6 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={loading || !isFormValid}
@@ -331,16 +323,45 @@ export default function RegisterPage() {
                 'Create Account'
               )}
             </button>
-          </form>
 
-          <div className="text-center mt-8">
-            <p className="text-gray-400">
-              Already have an account?{' '}
-              <a href="/login" className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 hover:from-purple-300 hover:to-pink-300 font-semibold transition-all duration-300 hover:underline">
-                Sign in here
-              </a>
-            </p>
-          </div>
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-600"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-transparent text-gray-400">or</span>
+              </div>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              <button
+                onClick={() => handleSocialLogin('google')}
+                className="w-full py-3 px-6 rounded-xl font-semibold text-white bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-700 hover:to-orange-700 transition-all duration-300 transform hover:scale-[1.02] flex items-center justify-center gap-2"
+              >
+                <LogIn className="w-5 h-5" />
+                Continue with Google
+              </button>
+              <button
+                onClick={() => handleSocialLogin('facebook')}
+                className="w-full py-3 px-6 rounded-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 transform hover:scale-[1.02] flex items-center justify-center gap-2"
+              >
+                <LogIn className="w-5 h-5" />
+                Continue with Facebook
+              </button>
+            </div>
+
+            <div className="text-center mt-8">
+              <p className="text-gray-400">
+                Already have an account?{' '}
+                <a
+                  href="/login"
+                  className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 hover:from-purple-300 hover:to-pink-300 font-semibold transition-all duration-300 hover:underline"
+                >
+                  Sign in here
+                </a>
+              </p>
+            </div>
+          </form>
         </div>
       </div>
 
