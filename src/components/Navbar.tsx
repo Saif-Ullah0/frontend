@@ -9,6 +9,17 @@ export default function Navbar() {
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  // Hide navbar on login/register pages
+const hideOn = ['/login', '/register', '/signup', '/forgot-password', '/reset-password'];
+
+// Normalize pathname (remove trailing slashes, query params)
+const normalized = (pathname || '').split('?')[0].replace(/\/+$/, '');
+
+if (hideOn.includes(normalized)) {
+  return null; // Don't render the navbar
+}
+
+
   const handleLogout = async () => {
     try {
       const res = await fetch('http://localhost:5000/api/auth/logout', {
