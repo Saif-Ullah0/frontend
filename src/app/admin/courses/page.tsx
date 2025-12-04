@@ -655,7 +655,7 @@ export default function AdminCoursesPage() {
                 </div>
               </div>
               
-              {/* Debug Info */}
+              {/* Debug Info
               <div className="mt-4 p-3 bg-white/5 rounded-lg text-xs text-gray-500">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -675,7 +675,7 @@ export default function AdminCoursesPage() {
                     )}
                   </div>
                 </div>
-              </div>
+              </div> */}
             </div>
 
             {/* Courses Grid */}
